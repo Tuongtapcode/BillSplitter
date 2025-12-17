@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Upload, Users, Plus, Trash2, Calculator, History, Camera, Save, FolderOpen, Sun, Moon, Monitor, Printer, RefreshCw } from 'lucide-react';
+import { Upload, Users, Plus, Trash2, Calculator, History, Camera, Save, FolderOpen, RefreshCw, Printer } from 'lucide-react';
+import { useAuth } from './context/AuthContext';
+import Header from './components/layout/Header';
+import Footer from './components/layout/Footer';
+import AuthForm from './components/AuthForm';
 
 // === CẤU HÌNH API BACKEND ===
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-const USER_ID = 'user_demo_001'; // Tạm thời dùng hardcode, sau này có thể lấy từ auth
 
 // === API Service ===
 const api = {
-  // Gemini - Đọc hóa đơn
+  // Gemini - Đọc hóa đơn (không cần auth)
   async extractBill(imageBase64, mimeType) {
     const response = await fetch(`${API_BASE_URL}/gemini/extract`, {
       method: 'POST',
@@ -23,42 +26,52 @@ const api = {
     return response.json();
   },
 
-  // Bills CRUD
-  async createBill(billData) {
+  // Bills CRUD (cần auth)
+  async createBill(billData, token) {
     const response = await fetch(`${API_BASE_URL}/bills`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...billData, userId: USER_ID })
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(billData)
     });
     
     if (!response.ok) throw new Error('Failed to create bill');
     return response.json();
   },
 
-  async getBills(startDate, endDate, limit = 50, skip = 0) {
+  async getBills(token, startDate, endDate, limit = 50, skip = 0) {
     const params = new URLSearchParams({ limit, skip });
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
     
-    const response = await fetch(`${API_BASE_URL}/bills/${USER_ID}?${params}`);
+    const response = await fetch(`${API_BASE_URL}/bills?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
     if (!response.ok) throw new Error('Failed to fetch bills');
     return response.json();
   },
 
-  async getBillStats(year, month) {
+  async getBillStats(token, year, month) {
     const params = new URLSearchParams();
     if (year) params.append('year', year);
     if (month) params.append('month', month);
     
-    const response = await fetch(`${API_BASE_URL}/bills/${USER_ID}/stats?${params}`);
+    const response = await fetch(`${API_BASE_URL}/bills/stats?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
     if (!response.ok) throw new Error('Failed to fetch stats');
     return response.json();
   },
 
-  async updateBill(billId, billData) {
+  async updateBill(billId, billData, token) {
     const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify(billData)
     });
     
@@ -66,9 +79,10 @@ const api = {
     return response.json();
   },
 
-  async deleteBill(billId) {
+  async deleteBill(billId, token) {
     const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     
     if (!response.ok) throw new Error('Failed to delete bill');
@@ -84,6 +98,8 @@ const themeStorage = {
 
 // === COMPONENT CHÍNH ===
 export default function BillSplitter() {
+  const { user, logout, getToken, isAuthenticated } = useAuth();
+  
   const [people, setPeople] = useState(['Nguyễn Ngọc Tưởng', 'Dương Xuân Thắng']);
   const [items, setItems] = useState([]);
   const [newPersonName, setNewPersonName] = useState('');
@@ -95,15 +111,18 @@ export default function BillSplitter() {
   const [theme, setTheme] = useState('system');
   const [currentBillId, setCurrentBillId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showAuthForm, setShowAuthForm] = useState(false);
   const resultRef = useRef(null);
 
   // Load history & theme on mount
   useEffect(() => {
-    loadHistory();
+    if (isAuthenticated) {
+      loadHistory();
+    }
     const savedTheme = themeStorage.load();
     setTheme(savedTheme);
     applyTheme(savedTheme);
-  }, []);
+  }, [isAuthenticated]);
 
   // --- THEME LOGIC ---
   const saveThemeSetting = (newTheme) => {
@@ -115,7 +134,6 @@ export default function BillSplitter() {
   const applyTheme = (currentTheme) => {
     const root = document.documentElement;
     root.classList.remove('dark');
-    root.classList.add('bg-white');
     
     if (currentTheme === 'dark' || (currentTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       root.classList.add('dark');
@@ -181,9 +199,12 @@ export default function BillSplitter() {
 
   // --- API CALLS ---
   const loadHistory = useCallback(async () => {
+    if (!isAuthenticated || !user) return;
+    
     setIsLoading(true);
     try {
-      const data = await api.getBills();
+      const token = getToken();
+      const data = await api.getBills(token);
       setHistory(data.bills || []);
     } catch (error) {
       console.error('Error loading history:', error);
@@ -191,9 +212,15 @@ export default function BillSplitter() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isAuthenticated, user, getToken]);
 
   const saveBill = async () => {
+    if (!isAuthenticated) {
+      alert('⚠️ Bạn cần đăng nhập để lưu hóa đơn!');
+      setShowAuthForm(true);
+      return;
+    }
+
     if (items.length === 0) {
       alert('Vui lòng thêm sản phẩm trước khi lưu!');
       return;
@@ -203,23 +230,22 @@ export default function BillSplitter() {
     const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
     try {
+      const token = getToken();
       if (currentBillId) {
-        // Update existing bill
         await api.updateBill(currentBillId, {
           name,
           people: [...people],
           items: [...items],
           total
-        });
+        }, token);
         alert('✅ Đã cập nhật hóa đơn thành công!');
       } else {
-        // Create new bill
         await api.createBill({
           name,
           people: [...people],
           items: [...items],
           total
-        });
+        }, token);
         alert('✅ Đã lưu hóa đơn thành công!');
       }
       
@@ -244,7 +270,8 @@ export default function BillSplitter() {
   const deleteBill = async (billId) => {
     if (confirm('Bạn có chắc muốn xóa hóa đơn này?')) {
       try {
-        await api.deleteBill(billId);
+        const token = getToken();
+        await api.deleteBill(billId, token);
         await loadHistory();
         alert('✅ Đã xóa hóa đơn!');
       } catch (error) {
@@ -375,393 +402,412 @@ export default function BillSplitter() {
   const buttonSecondaryStyle = "px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500";
 
   return (
-    <div className={`min-h-screen ${bgColor} p-4 transition-colors duration-300 ${textColor}`}>
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className={`${cardColor} rounded-2xl p-6 mb-6 flex justify-between items-start`}>
-          <div>
-            <h1 className={`text-3xl font-bold ${headerTextColor} mb-2 flex items-center gap-2`}>
-              <Calculator className="text-green-600 dark:text-green-400" />
-              Chia Hóa Đơn Thông Minh
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">Sử dụng Gemini AI để tự động đọc hóa đơn và chia tiền</p>
-            
-            <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              MongoDB Database (Persistent)
-            </div>
-          </div>
+    <div className={`min-h-screen flex flex-col ${bgColor} transition-colors duration-300`}>
+      {/* Header */}
+      <Header 
+        user={user}
+        onLogin={() => setShowAuthForm(true)}
+        onLogout={logout}
+        theme={theme}
+        onThemeChange={saveThemeSetting}
+      />
 
-          {/* Theme Switch & Buttons */}
-          <div className="flex flex-col items-end gap-2 mt-1">
-            <div className="flex space-x-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                <button
-                    onClick={() => saveThemeSetting('light')}
-                    className={`p-2 rounded-lg transition ${theme === 'light' ? 'bg-white shadow dark:bg-gray-600 text-yellow-500' : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
-                    title="Giao diện Sáng"
-                >
-                    <Sun size={18} />
-                </button>
-                <button
-                    onClick={() => saveThemeSetting('dark')}
-                    className={`p-2 rounded-lg transition ${theme === 'dark' ? 'bg-white shadow dark:bg-gray-600 text-blue-500' : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
-                    title="Giao diện Tối"
-                >
-                    <Moon size={18} />
-                </button>
-                <button
-                    onClick={() => saveThemeSetting('system')}
-                    className={`p-2 rounded-lg transition ${theme === 'system' ? 'bg-white shadow dark:bg-gray-600 text-purple-500' : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
-                    title="Theo thiết bị"
-                >
-                    <Monitor size={18} />
-                </button>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={resetBill}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
-              >
-                <RefreshCw size={16} />
-                Mới
-              </button>
-              <button
-                onClick={() => setShowHistory(!showHistory)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
-              >
-                <History size={18} />
-                Lịch sử ({history.length})
-              </button>
-            </div>
+      {/* Auth Modal */}
+      {showAuthForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+            <AuthForm onClose={() => setShowAuthForm(false)} />
           </div>
         </div>
+      )}
 
-        {/* History Panel */}
-        {showHistory && (
+      {/* Main Content */}
+      <main className="flex-1 p-4">
+        <div className="max-w-4xl mx-auto">
+          {/* Action Buttons */}
           <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
-            <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
-              <FolderOpen className="text-blue-600 dark:text-blue-400" />
-              Lịch sử hóa đơn
-            </h2>
-            
-            {isLoading ? (
-              <div className="text-center py-8">
-                <RefreshCw className="animate-spin h-8 w-8 text-blue-500 mx-auto mb-2" />
-                <p className="text-gray-500 dark:text-gray-400">Đang tải...</p>
-              </div>
-            ) : history.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">Chưa có hóa đơn nào được lưu</p>
-            ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {history.map((bill) => (
-                  <div key={bill._id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className={`font-bold ${headerTextColor}`}>{bill.name}</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {new Date(bill.createdAt).toLocaleString('vi-VN')}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                          {bill.total.toLocaleString('vi-VN')}đ
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {bill.items.length} sản phẩm • {bill.people.length} người
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => loadBill(bill)}
-                        className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
-                      >
-                        Tải lại
-                      </button>
-                      <button
-                        onClick={() => deleteBill(bill._id)}
-                        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Upload Image */}
-        <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
-          <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
-            <Camera className="text-purple-600 dark:text-purple-400" />
-            Tự động đọc hóa đơn
-          </h2>
-          
-          <label className="block">
-            <div className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition ${
-              isProcessing ? 'border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800' : 'border-green-300 hover:border-green-500 hover:bg-green-50 dark:hover:bg-gray-600'
-            }`}>
-              {isProcessing ? (
-                <div className="flex flex-col items-center gap-3">
-                  <RefreshCw className="animate-spin h-12 w-12 text-green-500 dark:text-green-400" />
-                  <p className="text-gray-600 dark:text-gray-300 font-medium">Đang đọc hóa đơn...</p>
-                </div>
-              ) : (
-                <>
-                  <Upload className="mx-auto mb-3 text-green-600 dark:text-green-400" size={48} />
-                  <p className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-1">
-                    Chụp hoặc tải ảnh hóa đơn
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Sử dụng Gemini AI để trích xuất thông tin sản phẩm
-                  </p>
-                </>
-              )}
-            </div>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleImageUpload}
-              disabled={isProcessing}
-              className="hidden"
-            />
-          </label>
-        </div>
-
-        {/* People Management */}
-        <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
-          <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
-            <Users className="text-blue-600 dark:text-blue-400" />
-            Danh sách người ({people.length})
-          </h2>
-          
-          <div className="flex flex-wrap gap-3 mb-4">
-            {people.map((person, index) => (
-              <div key={index} className="flex items-center gap-2 bg-blue-100 dark:bg-blue-900 px-4 py-2 rounded-full">
-                <span className="font-medium text-blue-800 dark:text-blue-300">{person}</span>
-                {people.length > 1 && (
+            <div className="flex flex-wrap gap-3 justify-between items-center">
+              <div className="flex gap-2">
+                <button
+                  onClick={resetBill}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
+                >
+                  <RefreshCw size={16} />
+                  Hóa đơn mới
+                </button>
+                
+                {isAuthenticated && (
                   <button
-                    onClick={() => removePerson(index)}
-                    className="text-red-500 hover:text-red-700 dark:hover:text-red-400"
+                    onClick={() => setShowHistory(!showHistory)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
                   >
-                    <Trash2 size={16} />
+                    <History size={18} />
+                    Lịch sử ({history.length})
                   </button>
                 )}
               </div>
-            ))}
+
+              {!isAuthenticated && (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  💡 <button 
+                    onClick={() => setShowAuthForm(true)}
+                    className="underline hover:text-green-600 dark:hover:text-green-400"
+                  >
+                    Đăng nhập
+                  </button> để lưu hóa đơn
+                </div>
+              )}
+            </div>
           </div>
 
-          {!showAddPerson ? (
-            <button
-              onClick={() => setShowAddPerson(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
-            >
-              <Plus size={20} />
-              Thêm người
-            </button>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newPersonName}
-                onChange={(e) => setNewPersonName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addPerson()}
-                placeholder="Tên người..."
-                className={`flex-1 ${inputStyle}`}
-                autoFocus
-              />
-              <button
-                onClick={addPerson}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
-              >
-                Thêm
-              </button>
-              <button
-                onClick={() => {
-                  setShowAddPerson(false);
-                  setNewPersonName('');
-                }}
-                className={buttonSecondaryStyle}
-              >
-                Hủy
-              </button>
+          {/* History Panel */}
+          {showHistory && isAuthenticated && (
+            <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
+              <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
+                <FolderOpen className="text-blue-600 dark:text-blue-400" />
+                Lịch sử hóa đơn
+              </h2>
+              
+              {isLoading ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="animate-spin h-8 w-8 text-blue-500 mx-auto mb-2" />
+                  <p className="text-gray-500 dark:text-gray-400">Đang tải...</p>
+                </div>
+              ) : history.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400 text-center py-8">Chưa có hóa đơn nào được lưu</p>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {history.map((bill) => (
+                    <div key={bill._id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className={`font-bold ${headerTextColor}`}>{bill.name}</h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {new Date(bill.createdAt).toLocaleString('vi-VN')}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                            {bill.total.toLocaleString('vi-VN')}đ
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {bill.items.length} sản phẩm • {bill.people.length} người
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => loadBill(bill)}
+                          className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
+                        >
+                          Tải lại
+                        </button>
+                        <button
+                          onClick={() => deleteBill(bill._id)}
+                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* Items List */}
-        <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
-          <h2 className={`text-xl font-bold ${headerTextColor} mb-4`}>Danh sách sản phẩm</h2>
-          
-          <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
-            {items.map((item, index) => (
-              <div key={index} className={itemCardStyle}>
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) => updateItem(index, 'name', e.target.value)}
-                    placeholder="Tên sản phẩm"
-                    className={`md:col-span-4 ${inputStyle}`}
-                  />
-                  
-                  <input
-                    type="number"
-                    value={item.price}
-                    onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-                    placeholder="Giá"
-                    className={`md:col-span-2 ${inputStyle}`}
-                  />
-                  
-                  <input
-                    type="number"
-                    value={item.quantity}
-                    onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
-                    placeholder="SL"
-                    className={`md:col-span-2 ${inputStyle}`}
-                  />
-                  
-                  <select
-                    value={item.assignedTo === null ? 'shared' : item.assignedTo}
-                    onChange={(e) => updateItem(index, 'assignedTo', e.target.value === 'shared' ? null : parseInt(e.target.value))}
-                    className={`md:col-span-3 ${inputStyle}`}
-                  >
-                    <option value="shared">🤝 Chia chung</option>
-                    {people.map((person, pIndex) => (
-                      <option key={pIndex} value={pIndex}>
-                        👤 {person}
-                      </option>
-                    ))}
-                  </select>
-                  
-                  <button
-                    onClick={() => removeItem(index)}
-                    className="md:col-span-1 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-                
-                <div className={`mt-2 text-right text-sm font-semibold ${textColor}`}>
-                  Thành tiền: {(item.price * item.quantity).toLocaleString('vi-VN')}đ
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={addItem}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium"
-          >
-            <Plus size={20} />
-            Thêm sản phẩm thủ công
-          </button>
-        </div>
-
-        {/* Save Bill */}
-        {items.length > 0 && (
+          {/* Upload Image */}
           <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
             <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
-              <Save className="text-orange-600 dark:text-orange-400" />
-              {currentBillId ? 'Cập nhật hóa đơn' : 'Lưu hóa đơn'}
+              <Camera className="text-purple-600 dark:text-purple-400" />
+              Tự động đọc hóa đơn
             </h2>
             
-            <div className="flex gap-2">
+            <label className="block">
+              <div className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition ${
+                isProcessing ? 'border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800' : 'border-green-300 hover:border-green-500 hover:bg-green-50 dark:hover:bg-gray-600'
+              }`}>
+                {isProcessing ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <RefreshCw className="animate-spin h-12 w-12 text-green-500 dark:text-green-400" />
+                    <p className="text-gray-600 dark:text-gray-300 font-medium">Đang đọc hóa đơn...</p>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="mx-auto mb-3 text-green-600 dark:text-green-400" size={48} />
+                    <p className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-1">
+                      Chụp hoặc tải ảnh hóa đơn
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Sử dụng Gemini AI để trích xuất thông tin sản phẩm
+                    </p>
+                  </>
+                )}
+              </div>
               <input
-                type="text"
-                value={billName}
-                onChange={(e) => setBillName(e.target.value)}
-                placeholder={`Hóa đơn ${new Date().toLocaleDateString('vi-VN')}`}
-                className={`flex-1 px-4 py-3 ${inputStyle}`}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleImageUpload}
+                disabled={isProcessing}
+                className="hidden"
               />
-              <button
-                onClick={saveBill}
-                className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium flex items-center gap-2"
-              >
-                <Save size={20} />
-                {currentBillId ? 'Cập nhật' : 'Lưu'}
-              </button>
-            </div>
+            </label>
           </div>
-        )}
 
-        {/* Results */}
-        {items.length > 0 && (
-          <div className={`${cardColor} rounded-2xl p-6`}>
-            <div className="flex justify-between items-center mb-4">
+          {/* People Management */}
+          <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
+            <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
+              <Users className="text-blue-600 dark:text-blue-400" />
+              Danh sách người ({people.length})
+            </h2>
+            
+            <div className="flex flex-wrap gap-3 mb-4">
+              {people.map((person, index) => (
+                <div key={index} className="flex items-center gap-2 bg-blue-100 dark:bg-blue-900 px-4 py-2 rounded-full">
+                  <span className="font-medium text-blue-800 dark:text-blue-300">{person}</span>
+                  {people.length > 1 && (
+                    <button
+                      onClick={() => removePerson(index)}
+                      className="text-red-500 hover:text-red-700 dark:hover:text-red-400"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {!showAddPerson ? (
+              <button
+                onClick={() => setShowAddPerson(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+              >
+                <Plus size={20} />
+                Thêm người
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPersonName}
+                  onChange={(e) => setNewPersonName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addPerson()}
+                  placeholder="Tên người..."
+                  className={`flex-1 ${inputStyle}`}
+                  autoFocus
+                />
+                <button
+                  onClick={addPerson}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                >
+                  Thêm
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddPerson(false);
+                    setNewPersonName('');
+                  }}
+                  className={buttonSecondaryStyle}
+                >
+                  Hủy
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Items List */}
+          <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
+            <h2 className={`text-xl font-bold ${headerTextColor} mb-4`}>Danh sách sản phẩm</h2>
+            
+            <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
+              {items.map((item, index) => (
+                <div key={index} className={itemCardStyle}>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={(e) => updateItem(index, 'name', e.target.value)}
+                      placeholder="Tên sản phẩm"
+                      className={`md:col-span-4 ${inputStyle}`}
+                    />
+                    
+                    <input
+                      type="number"
+                      value={item.price}
+                      onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
+                      placeholder="Giá"
+                      className={`md:col-span-2 ${inputStyle}`}
+                    />
+                    
+                    <input
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
+                      placeholder="SL"
+                      className={`md:col-span-2 ${inputStyle}`}
+                    />
+                    
+                    <select
+                      value={item.assignedTo === null ? 'shared' : item.assignedTo}
+                      onChange={(e) => updateItem(index, 'assignedTo', e.target.value === 'shared' ? null : parseInt(e.target.value))}
+                      className={`md:col-span-3 ${inputStyle}`}
+                    >
+                      <option value="shared">🤝 Chia chung</option>
+                      {people.map((person, pIndex) => (
+                        <option key={pIndex} value={pIndex}>
+                          👤 {person}
+                        </option>
+                      ))}
+                    </select>
+                    
+                    <button
+                      onClick={() => removeItem(index)}
+                      className="md:col-span-1 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                  
+                  <div className={`mt-2 text-right text-sm font-semibold ${textColor}`}>
+                    Thành tiền: {(item.price * item.quantity).toLocaleString('vi-VN')}đ
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={addItem}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium"
+            >
+              <Plus size={20} />
+              Thêm sản phẩm thủ công
+            </button>
+          </div>
+
+          {/* Save Bill */}
+          {items.length > 0 && (
+            <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
+              <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
+                <Save className="text-orange-600 dark:text-orange-400" />
+                {currentBillId ? 'Cập nhật hóa đơn' : 'Lưu hóa đơn'}
+              </h2>
+              
+              {!isAuthenticated && (
+                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
+                  ⚠️ Bạn cần đăng nhập để lưu hóa đơn. 
+                  <button 
+                    onClick={() => setShowAuthForm(true)}
+                    className="ml-2 underline hover:text-yellow-900 dark:hover:text-yellow-100 font-medium"
+                  >
+                    Đăng nhập ngay
+                  </button>
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={billName}
+                  onChange={(e) => setBillName(e.target.value)}
+                  placeholder={`Hóa đơn ${new Date().toLocaleDateString('vi-VN')}`}
+                  className={`flex-1 px-4 py-3 ${inputStyle}`}
+                  disabled={!isAuthenticated}
+                />
+                <button
+                  onClick={saveBill}
+                  disabled={!isAuthenticated}
+                  className={`px-6 py-3 rounded-lg transition font-medium flex items-center gap-2 ${
+                    isAuthenticated 
+                      ? 'bg-orange-500 text-white hover:bg-orange-600' 
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  <Save size={20} />
+                  {currentBillId ? 'Cập nhật' : 'Lưu'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Results */}
+          {items.length > 0 && (
+            <div className={`${cardColor} rounded-2xl p-6`}>
+              <div className="flex justify-between items-center mb-4">
                 <h2 className={`text-xl font-bold ${headerTextColor}`}>Kết quả</h2>
                 <button
-                    onClick={handlePrintResult}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
+                  onClick={handlePrintResult}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
                 >
-                    <Printer size={18} />
-                    In kết quả
+                  <Printer size={18} />
+                  In kết quả
                 </button>
-            </div>
+              </div>
 
-            <div ref={resultRef}>
+              <div ref={resultRef}>
                 {/* Tổng hóa đơn */}
                 <div className="mb-6">
-                    <h2 className={`text-lg font-bold ${headerTextColor} mb-3`}>Tổng hóa đơn</h2>
-                    <div className="bg-blue-100 dark:bg-blue-900 rounded-lg p-4">
-                        <div className="text-center">
-                            <div className="text-gray-600 dark:text-gray-400 text-sm mb-1">Tổng cộng (Đã bao gồm VAT)</div>
-                            <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">
-                                {totalBill.toLocaleString('vi-VN')}đ
-                            </div>
-                        </div>
+                  <h2 className={`text-lg font-bold ${headerTextColor} mb-3`}>Tổng hóa đơn</h2>
+                  <div className="bg-blue-100 dark:bg-blue-900 rounded-lg p-4">
+                    <div className="text-center">
+                      <div className="text-gray-600 dark:text-gray-400 text-sm mb-1">Tổng cộng (Đã bao gồm VAT)</div>
+                      <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">
+                        {totalBill.toLocaleString('vi-VN')}đ
+                      </div>
                     </div>
+                  </div>
                 </div>
 
                 {/* Kết quả chia tiền */}
                 <div className="mb-4">
-                    <h2 className={`text-lg font-bold ${headerTextColor} mb-3`}>Kết quả chia tiền</h2>
-                    <div className="space-y-4">
-                        {results.map((result, index) => (
-                        <div key={index} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-gray-800 dark:to-gray-700">
-                            <div className="flex justify-between items-start mb-3">
-                            <h3 className={`text-lg font-bold ${headerTextColor}`}>{result.name}</h3>
-                            <div className="text-right">
-                                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                {result.total.toLocaleString('vi-VN')}đ
-                                </div>
+                  <h2 className={`text-lg font-bold ${headerTextColor} mb-3`}>Kết quả chia tiền</h2>
+                  <div className="space-y-4">
+                    {results.map((result, index) => (
+                      <div key={index} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-gray-800 dark:to-gray-700">
+                        <div className="flex justify-between items-start mb-3">
+                          <h3 className={`text-lg font-bold ${headerTextColor}`}>{result.name}</h3>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {result.total.toLocaleString('vi-VN')}đ
                             </div>
-                            </div>
-                            
-                            <div className="space-y-2 text-sm">
-                            <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                                <span>Phần chia chung ({people.length} người):</span>
-                                <span className="font-semibold">{result.shared.toLocaleString('vi-VN')}đ</span>
-                            </div>
-                            
-                            {result.personal > 0 && (
-                                <>
-                                <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                                    <span>Sản phẩm riêng:</span>
-                                    <span className="font-semibold">{result.personal.toLocaleString('vi-VN')}đ</span>
-                                </div>
-                                
-                                <div className="mt-2 pl-4 border-l-2 border-blue-300 dark:border-blue-500">
-                                    {result.personalItems.map((item, idx) => (
-                                    <div key={idx} className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                                        • {item.name} x{item.quantity} = {(item.price * item.quantity).toLocaleString('vi-VN')}đ
-                                    </div>
-                                    ))}
-                                </div>
-                                </>
-                            )}
-                            </div>
+                          </div>
                         </div>
-                        ))}
-                    </div>
+                        
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                            <span>Phần chia chung ({people.length} người):</span>
+                            <span className="font-semibold">{result.shared.toLocaleString('vi-VN')}đ</span>
+                          </div>
+                          
+                          {result.personal > 0 && (
+                            <>
+                              <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                                <span>Sản phẩm riêng:</span>
+                                <span className="font-semibold">{result.personal.toLocaleString('vi-VN')}đ</span>
+                              </div>
+                              
+                              <div className="mt-2 pl-4 border-l-2 border-blue-300 dark:border-blue-500">
+                                {result.personalItems.map((item, idx) => (
+                                  <div key={idx} className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                    • {item.name} x{item.quantity} = {(item.price * item.quantity).toLocaleString('vi-VN')}đ
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </main>
+
+      {/* Footer */}
+      <Footer />
     </div>
   );
 }
