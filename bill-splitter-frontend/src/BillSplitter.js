@@ -1,65 +1,88 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Upload, Users, Plus, Trash2, Calculator, History, Camera, Save, FolderOpen, Sun, Moon, Monitor, Printer, RefreshCw } from 'lucide-react';
 
-// === KHAI BÁO CẤU HÌNH API GEMINI ===
-const GEMINI_API_KEY = "AIzaSyCDHVPp8VjA34TiWsXsIwu1z8tcNsmMgCw"; 
-const GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent";
-const PROMPT_TEXT = "Đây là hóa đơn từ siêu thị. Hãy trích xuất thông tin các sản phẩm và trả về ONLY JSON theo format sau (không thêm markdown, không thêm text khác):\n{\n  \"items\": [\n    {\"name\": \"tên sản phẩm\", \"price\": giá_sau_VAT, \"quantity\": số_lượng}\n  ]\n}\n\nLưu ý:\n- Lấy giá ĐÃ BAO GỒM VAT (cột \"Giá bán (có VAT)\")\n- Quantity là số ở cột SL hoặc số lượng\n- Bỏ qua các dòng không phải sản phẩm\n- Chỉ trả về JSON thuần, không có ```json hay text thừa";
+// === CẤU HÌNH API BACKEND ===
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const USER_ID = 'user_demo_001'; // Tạm thời dùng hardcode, sau này có thể lấy từ auth
 
-// === STORAGE WRAPPER với fallback ===
-const storage = {
-  isClaudeStorage: typeof window !== 'undefined' && window.storage,
-  
-  async set(key, value) {
-    if (this.isClaudeStorage) {
-      return await window.storage.set(key, value);
-    } else {
-      // Fallback to localStorage
-      localStorage.setItem(key, value);
-      return { key, value };
+// === API Service ===
+const api = {
+  // Gemini - Đọc hóa đơn
+  async extractBill(imageBase64, mimeType) {
+    const response = await fetch(`${API_BASE_URL}/gemini/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageBase64, mimeType })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to extract bill');
     }
+    
+    return response.json();
   },
-  
-  async get(key) {
-    if (this.isClaudeStorage) {
-      const result = await window.storage.get(key);
-      return result ? { key, value: result.value } : null;
-    } else {
-      // Fallback to localStorage
-      const value = localStorage.getItem(key);
-      return value ? { key, value } : null;
-    }
+
+  // Bills CRUD
+  async createBill(billData) {
+    const response = await fetch(`${API_BASE_URL}/bills`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...billData, userId: USER_ID })
+    });
+    
+    if (!response.ok) throw new Error('Failed to create bill');
+    return response.json();
   },
-  
-  async delete(key) {
-    if (this.isClaudeStorage) {
-      return await window.storage.delete(key);
-    } else {
-      // Fallback to localStorage
-      localStorage.removeItem(key);
-      return { key, deleted: true };
-    }
+
+  async getBills(startDate, endDate, limit = 50, skip = 0) {
+    const params = new URLSearchParams({ limit, skip });
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    
+    const response = await fetch(`${API_BASE_URL}/bills/${USER_ID}?${params}`);
+    if (!response.ok) throw new Error('Failed to fetch bills');
+    return response.json();
   },
-  
-  async list(prefix) {
-    if (this.isClaudeStorage) {
-      return await window.storage.list(prefix);
-    } else {
-      // Fallback to localStorage
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          keys.push(key);
-        }
-      }
-      return { keys };
-    }
+
+  async getBillStats(year, month) {
+    const params = new URLSearchParams();
+    if (year) params.append('year', year);
+    if (month) params.append('month', month);
+    
+    const response = await fetch(`${API_BASE_URL}/bills/${USER_ID}/stats?${params}`);
+    if (!response.ok) throw new Error('Failed to fetch stats');
+    return response.json();
+  },
+
+  async updateBill(billId, billData) {
+    const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(billData)
+    });
+    
+    if (!response.ok) throw new Error('Failed to update bill');
+    return response.json();
+  },
+
+  async deleteBill(billId) {
+    const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
+      method: 'DELETE'
+    });
+    
+    if (!response.ok) throw new Error('Failed to delete bill');
+    return response.json();
   }
 };
 
-// === COMPONENT CHÍNH ===
+// === LOCAL STORAGE cho Theme ===
+const themeStorage = {
+  save: (theme) => localStorage.setItem('theme', theme),
+  load: () => localStorage.getItem('theme') || 'system'
+};
 
+// === COMPONENT CHÍNH ===
 export default function BillSplitter() {
   const [people, setPeople] = useState(['Nguyễn Ngọc Tưởng', 'Dương Xuân Thắng']);
   const [items, setItems] = useState([]);
@@ -69,49 +92,37 @@ export default function BillSplitter() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [storageType, setStorageType] = useState('');
-  const [theme, setTheme] = useState('system'); // 'light', 'dark', 'system'
+  const [theme, setTheme] = useState('system');
+  const [currentBillId, setCurrentBillId] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const resultRef = useRef(null);
 
-  // Load history & theme from storage on mount
+  // Load history & theme on mount
   useEffect(() => {
-    const type = storage.isClaudeStorage ? 'Claude Storage (Persistent)' : 'LocalStorage (Browser)';
-    setStorageType(type);
     loadHistory();
-    loadThemeSetting();
+    const savedTheme = themeStorage.load();
+    setTheme(savedTheme);
+    applyTheme(savedTheme);
   }, []);
 
   // --- THEME LOGIC ---
-
-  const loadThemeSetting = async () => {
-    const storedTheme = await storage.get('theme');
-    const initialTheme = storedTheme ? storedTheme.value : 'system';
-    setTheme(initialTheme);
-    applyTheme(initialTheme);
-  };
-
-  const saveThemeSetting = async (newTheme) => {
+  const saveThemeSetting = (newTheme) => {
     setTheme(newTheme);
-    await storage.set('theme', newTheme);
+    themeStorage.save(newTheme);
     applyTheme(newTheme);
   };
 
   const applyTheme = (currentTheme) => {
     const root = document.documentElement;
-    
-    // 1. Luôn đảm bảo nền HTML là trắng (cho light mode) và chữ đen,
-    //    sau đó chỉ ghi đè khi cần dark mode.
     root.classList.remove('dark');
-    root.classList.add('bg-white'); // Buộc nền HTML là trắng
+    root.classList.add('bg-white');
     
-    // 2. Thêm class 'dark' nếu cần (sẽ ghi đè bg-white thành dark:bg-gray-900)
     if (currentTheme === 'dark' || (currentTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       root.classList.add('dark');
     }
   };
 
   useEffect(() => {
-    // Listen for system theme changes if 'system' is selected
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = () => {
       if (theme === 'system') {
@@ -119,22 +130,18 @@ export default function BillSplitter() {
       }
     };
     mediaQuery.addEventListener('change', handler);
-    // Áp dụng lại theme khi component mount để đảm bảo đồng bộ
-    applyTheme(theme); 
+    applyTheme(theme);
     
     return () => mediaQuery.removeEventListener('change', handler);
   }, [theme]);
 
-  // --- INN ẨN LOGIC ---
+  // --- PRINT LOGIC ---
   const handlePrintResult = () => {
     if (resultRef.current) {
       const printContents = resultRef.current.innerHTML;
-
-      // Tạo cửa sổ in mới
       const printWindow = window.open('', '_blank', 'width=800,height=600');
       printWindow.document.write('<html><head><title>Kết quả chia tiền</title>');
       
-      // Đảm bảo CSS in ấn
       printWindow.document.write(`
         <style>
             @media print {
@@ -154,7 +161,7 @@ export default function BillSplitter() {
                     color: black !important; 
                     text-shadow: none !important;
                 }
-                .bg-gradient-to-r { background: #f0fdf4 !important; } /* Light green background for items */
+                .bg-gradient-to-r { background: #f0fdf4 !important; }
                 .text-green-600 { color: #059669 !important; }
                 .text-blue-700 { color: #1d4ed8 !important; }
                 .text-gray-600, .text-gray-500 { color: #4b5563 !important; }
@@ -172,30 +179,17 @@ export default function BillSplitter() {
     }
   };
 
-  // --- HỆ THỐNG DỮ LIỆU ---
-
+  // --- API CALLS ---
   const loadHistory = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const result = await storage.list('bill:');
-      if (result && result.keys && result.keys.length > 0) {
-        const bills = [];
-        for (const key of result.keys) {
-          try {
-            const item = await storage.get(key);
-            if (item && item.value) {
-              bills.push(JSON.parse(item.value));
-            }
-          } catch (err) {
-            console.error('Error loading bill:', key, err);
-          }
-        }
-        setHistory(bills.sort((a, b) => new Date(b.date) - new Date(a.date)));
-      } else {
-        setHistory([]);
-      }
+      const data = await api.getBills();
+      setHistory(data.bills || []);
     } catch (error) {
       console.error('Error loading history:', error);
-      setHistory([]);
+      alert('❌ Lỗi khi tải lịch sử: ' + error.message);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -206,24 +200,32 @@ export default function BillSplitter() {
     }
 
     const name = billName.trim() || `Hóa đơn ${new Date().toLocaleDateString('vi-VN')}`;
-    const bill = {
-      id: Date.now().toString(),
-      name,
-      date: new Date().toISOString(),
-      people: [...people],
-      items: [...items],
-      total: items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-    };
+    const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
     try {
-      const result = await storage.set(`bill:${bill.id}`, JSON.stringify(bill));
-      if (result) {
-        alert('✅ Đã lưu hóa đơn thành công!');
-        await loadHistory();
-        setBillName('');
+      if (currentBillId) {
+        // Update existing bill
+        await api.updateBill(currentBillId, {
+          name,
+          people: [...people],
+          items: [...items],
+          total
+        });
+        alert('✅ Đã cập nhật hóa đơn thành công!');
       } else {
-        throw new Error('Storage operation failed');
+        // Create new bill
+        await api.createBill({
+          name,
+          people: [...people],
+          items: [...items],
+          total
+        });
+        alert('✅ Đã lưu hóa đơn thành công!');
       }
+      
+      await loadHistory();
+      setBillName('');
+      setCurrentBillId(null);
     } catch (error) {
       console.error('Save error:', error);
       alert('❌ Lỗi khi lưu hóa đơn: ' + error.message);
@@ -234,6 +236,7 @@ export default function BillSplitter() {
     setPeople(bill.people);
     setItems(bill.items);
     setBillName(bill.name);
+    setCurrentBillId(bill._id);
     setShowHistory(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -241,13 +244,9 @@ export default function BillSplitter() {
   const deleteBill = async (billId) => {
     if (confirm('Bạn có chắc muốn xóa hóa đơn này?')) {
       try {
-        const result = await storage.delete(`bill:${billId}`);
-        if (result) {
-          await loadHistory();
-          alert('✅ Đã xóa hóa đơn!');
-        } else {
-          throw new Error('Delete operation failed');
-        }
+        await api.deleteBill(billId);
+        await loadHistory();
+        alert('✅ Đã xóa hóa đơn!');
       } catch (error) {
         console.error('Delete error:', error);
         alert('❌ Lỗi khi xóa: ' + error.message);
@@ -259,11 +258,6 @@ export default function BillSplitter() {
     const file = event.target.files[0];
     if (!file) return;
 
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
-        alert('⚠️ Lỗi: API Key chưa được cấu hình. Vui lòng kiểm tra lại file code.');
-        return;
-    }
-
     setIsProcessing(true);
 
     try {
@@ -274,56 +268,10 @@ export default function BillSplitter() {
         reader.readAsDataURL(file);
       });
 
-      const body = JSON.stringify({
-        contents: [
-            {
-                parts: [
-                    {
-                        inlineData: {
-                            mimeType: file.type,
-                            data: base64Data
-                        }
-                    },
-                    {
-                        text: PROMPT_TEXT
-                    }
-                ]
-            }
-        ]
-      });
+      const result = await api.extractBill(base64Data, file.type);
 
-      const response = await fetch(`${GEMINI_API_ENDPOINT}?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: body
-      });
-
-      const data = await response.json();
-      
-      if (data.error) {
-          throw new Error(data.error.message || "Lỗi API Gemini không xác định.");
-      }
-
-      const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!textContent) {
-        throw new Error("Mô hình AI không trả về nội dung trích xuất.");
-      }
-
-      let parsed;
-      try {
-          const jsonMatch = textContent.match(/\{[\s\S]*\}/);
-          const jsonString = jsonMatch ? jsonMatch[0] : textContent.trim();
-          parsed = JSON.parse(jsonString);
-      } catch (parseError) {
-          console.error('Lỗi Parse JSON:', parseError);
-          throw new Error('Lỗi phân tích cú pháp JSON từ AI.');
-      }
-
-      if (parsed.items && parsed.items.length > 0) {
-        const newItems = parsed.items.map(item => ({
+      if (result.success && result.data.items && result.data.items.length > 0) {
+        const newItems = result.data.items.map(item => ({
           name: item.name,
           price: parseFloat(item.price) || 0,
           quantity: parseFloat(item.quantity) || 1,
@@ -344,8 +292,14 @@ export default function BillSplitter() {
     }
   };
 
-  // --- NGƯỜI DÙNG & SẢN PHẨM LOGIC ---
+  const resetBill = () => {
+    setPeople(['Nguyễn Ngọc Tưởng', 'Dương Xuân Thắng']);
+    setItems([]);
+    setBillName('');
+    setCurrentBillId(null);
+  };
 
+  // --- NGƯỜI DÙNG & SẢN PHẨM LOGIC ---
   const addPerson = () => {
     if (newPersonName.trim()) {
       setPeople([...people, newPersonName.trim()]);
@@ -412,8 +366,6 @@ export default function BillSplitter() {
   const totalBill = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   // --- RENDERING ---
-
-  // Màu nền cho chế độ Sáng (mặc định) và Tối (dark:...)
   const bgColor = "bg-gradient-to-br from-green-50 to-blue-50 dark:from-gray-900 dark:to-gray-800";
   const cardColor = "bg-white shadow-xl dark:bg-gray-700";
   const textColor = "text-gray-800 dark:text-gray-100";
@@ -423,26 +375,24 @@ export default function BillSplitter() {
   const buttonSecondaryStyle = "px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500";
 
   return (
-    // Thêm className="text-gray-800" để đảm bảo màu chữ mặc định là đen (Light mode)
     <div className={`min-h-screen ${bgColor} p-4 transition-colors duration-300 ${textColor}`}>
       <div className="max-w-4xl mx-auto">
-        {/* Header and Theme Switch */}
+        {/* Header */}
         <div className={`${cardColor} rounded-2xl p-6 mb-6 flex justify-between items-start`}>
           <div>
             <h1 className={`text-3xl font-bold ${headerTextColor} mb-2 flex items-center gap-2`}>
               <Calculator className="text-green-600 dark:text-green-400" />
               Chia Hóa Đơn Thông Minh
             </h1>
-            <p className="text-gray-600 dark:text-gray-400">Sử dụng Gemini AI để tự động đọc hóa đơn và chia tiền công bằng</p>
+            <p className="text-gray-600 dark:text-gray-400">Sử dụng Gemini AI để tự động đọc hóa đơn và chia tiền</p>
             
-            {/* Storage Status */}
             <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${storage.isClaudeStorage ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-              {storageType}
+              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+              MongoDB Database (Persistent)
             </div>
           </div>
 
-          {/* Theme Switch & History Button */}
+          {/* Theme Switch & Buttons */}
           <div className="flex flex-col items-end gap-2 mt-1">
             <div className="flex space-x-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
                 <button
@@ -467,13 +417,22 @@ export default function BillSplitter() {
                     <Monitor size={18} />
                 </button>
             </div>
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
-            >
-              <History size={18} />
-              Lịch sử ({history.length})
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={resetBill}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
+              >
+                <RefreshCw size={16} />
+                Mới
+              </button>
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
+              >
+                <History size={18} />
+                Lịch sử ({history.length})
+              </button>
+            </div>
           </div>
         </div>
 
@@ -485,17 +444,22 @@ export default function BillSplitter() {
               Lịch sử hóa đơn
             </h2>
             
-            {history.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-8">
+                <RefreshCw className="animate-spin h-8 w-8 text-blue-500 mx-auto mb-2" />
+                <p className="text-gray-500 dark:text-gray-400">Đang tải...</p>
+              </div>
+            ) : history.length === 0 ? (
               <p className="text-gray-500 dark:text-gray-400 text-center py-8">Chưa có hóa đơn nào được lưu</p>
             ) : (
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {history.map((bill) => (
-                  <div key={bill.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
+                  <div key={bill._id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h3 className={`font-bold ${headerTextColor}`}>{bill.name}</h3>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {new Date(bill.date).toLocaleString('vi-VN')}
+                          {new Date(bill.createdAt).toLocaleString('vi-VN')}
                         </p>
                       </div>
                       <div className="text-right">
@@ -515,7 +479,7 @@ export default function BillSplitter() {
                         Tải lại
                       </button>
                       <button
-                        onClick={() => deleteBill(bill.id)}
+                        onClick={() => deleteBill(bill._id)}
                         className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
                       >
                         <Trash2 size={16} />
@@ -702,7 +666,7 @@ export default function BillSplitter() {
           <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
             <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
               <Save className="text-orange-600 dark:text-orange-400" />
-              Lưu hóa đơn
+              {currentBillId ? 'Cập nhật hóa đơn' : 'Lưu hóa đơn'}
             </h2>
             
             <div className="flex gap-2">
@@ -718,13 +682,13 @@ export default function BillSplitter() {
                 className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium flex items-center gap-2"
               >
                 <Save size={20} />
-                Lưu
+                {currentBillId ? 'Cập nhật' : 'Lưu'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Results (for Print) */}
+        {/* Results */}
         {items.length > 0 && (
           <div className={`${cardColor} rounded-2xl p-6`}>
             <div className="flex justify-between items-center mb-4">
@@ -739,7 +703,7 @@ export default function BillSplitter() {
             </div>
 
             <div ref={resultRef}>
-                {/* Tổng hóa đơn - New Section */}
+                {/* Tổng hóa đơn */}
                 <div className="mb-6">
                     <h2 className={`text-lg font-bold ${headerTextColor} mb-3`}>Tổng hóa đơn</h2>
                     <div className="bg-blue-100 dark:bg-blue-900 rounded-lg p-4">
@@ -752,7 +716,7 @@ export default function BillSplitter() {
                     </div>
                 </div>
 
-                {/* Kết quả chia tiền - New Section */}
+                {/* Kết quả chia tiền */}
                 <div className="mb-4">
                     <h2 className={`text-lg font-bold ${headerTextColor} mb-3`}>Kết quả chia tiền</h2>
                     <div className="space-y-4">
