@@ -1,7 +1,5 @@
 // src/routes/gemini.js
 const express = require('express');
-const fetch = require('node-fetch');
-
 const router = express.Router();
 
 // POST /extract - Trích xuất hóa đơn từ ảnh
@@ -32,7 +30,7 @@ Lưu ý:
 - Chỉ trả về JSON thuần, không có \`\`\`json hay text thừa`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
