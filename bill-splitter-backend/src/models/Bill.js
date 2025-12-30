@@ -8,6 +8,13 @@ const itemSchema = new mongoose.Schema({
     assignedTo: { type: Number, default: null }
 }, { _id: false }); // Không cần ID cho Sub-document Item
 
+// THÊM MỚI: Schema cho thông tin ảnh
+const imageSchema = new mongoose.Schema({
+    url: { type: String },           // URL ảnh từ Cloudinary
+    publicId: { type: String },      // Public ID để xóa ảnh trên Cloudinary
+    originalName: { type: String }   // Tên file gốc
+}, { _id: false });
+
 const billSchema = new mongoose.Schema({
     userId: {
         type: String, // Thay đổi từ ObjectId sang String
@@ -18,6 +25,13 @@ const billSchema = new mongoose.Schema({
     people: [{ type: String, required: true }],
     items: [itemSchema],
     total: { type: Number, required: true },
+    
+    // THÊM MỚI: Trường lưu thông tin ảnh hóa đơn
+    image: {
+        type: imageSchema,
+        default: null  // Mặc định là null nếu không có ảnh
+    },
+    
     createdAt: { type: Date, default: Date.now, index: true },
     updatedAt: { type: Date, default: Date.now }
 });

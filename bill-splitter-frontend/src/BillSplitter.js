@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Upload, Users, Plus, Trash2, Calculator, History, Camera, Save, FolderOpen, RefreshCw, Printer } from 'lucide-react';
+import { Upload, Users, Plus, Trash2, Calculator, History, Camera, Save, FolderOpen, RefreshCw, Printer, X, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
@@ -100,7 +100,7 @@ const themeStorage = {
 export default function BillSplitter() {
   const { user, logout, getToken, isAuthenticated } = useAuth();
   
-  const [people, setPeople] = useState(['Nguyễn Ngọc Tưởng', 'Dương Xuân Thắng']);
+  const [people, setPeople] = useState(['Ngọc Tưởng', 'Long Ánh', 'Duy Đông', 'Công Trực']);
   const [items, setItems] = useState([]);
   const [newPersonName, setNewPersonName] = useState('');
   const [showAddPerson, setShowAddPerson] = useState(false);
@@ -112,7 +112,10 @@ export default function BillSplitter() {
   const [currentBillId, setCurrentBillId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAuthForm, setShowAuthForm] = useState(false);
+  const [currentImage, setCurrentImage] = useState(null); // THÊM: Lưu thông tin ảnh
+  const [isDragging, setIsDragging] = useState(false); // THÊM: Trạng thái drag
   const resultRef = useRef(null);
+  const fileInputRef = useRef(null); // THÊM: Ref cho input file
 
   // Load history & theme on mount
   useEffect(() => {
@@ -153,7 +156,7 @@ export default function BillSplitter() {
     return () => mediaQuery.removeEventListener('change', handler);
   }, [theme]);
 
-  // --- PRINT LOGIC ---
+  // --- PRINT LOGIC (CẬP NHẬT: Thêm ảnh) ---
   const handlePrintResult = () => {
     if (resultRef.current) {
       const printContents = resultRef.current.innerHTML;
@@ -183,17 +186,53 @@ export default function BillSplitter() {
                 .text-green-600 { color: #059669 !important; }
                 .text-blue-700 { color: #1d4ed8 !important; }
                 .text-gray-600, .text-gray-500 { color: #4b5563 !important; }
+                /* THÊM: Style cho ảnh khi in */
+                .bill-image {
+                    max-width: 100%;
+                    height: auto;
+                    margin: 20px 0;
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                }
+                .image-section {
+                    page-break-inside: avoid;
+                    margin-bottom: 20px;
+                }
             }
         </style>
       `);
       
       printWindow.document.write('</head><body><div class="print-area">');
+      
+      // THÊM: In ảnh hóa đơn nếu có
+      if (currentImage && currentImage.url) {
+        printWindow.document.write(`
+          <div class="image-section">
+            <h3 style="color: #1d4ed8; margin-bottom: 10px;">📷 Ảnh hóa đơn gốc</h3>
+            <img src="${currentImage.url}" alt="Bill Image" class="bill-image" />
+          </div>
+        `);
+      }
+      
       printWindow.document.write(printContents);
       printWindow.document.write('</div></body></html>');
       
       printWindow.document.close();
       printWindow.focus();
-      printWindow.print();
+      
+      // Đợi ảnh load xong rồi mới in
+      if (currentImage && currentImage.url) {
+        const img = printWindow.document.querySelector('.bill-image');
+        if (img) {
+          img.onload = () => {
+            printWindow.print();
+          };
+        } else {
+          printWindow.print();
+        }
+      } else {
+        printWindow.print();
+      }
     }
   };
 
@@ -231,27 +270,26 @@ export default function BillSplitter() {
 
     try {
       const token = getToken();
+      const billData = {
+        name,
+        people: [...people],
+        items: [...items],
+        total,
+        image: currentImage // THÊM: Gửi thông tin ảnh
+      };
+
       if (currentBillId) {
-        await api.updateBill(currentBillId, {
-          name,
-          people: [...people],
-          items: [...items],
-          total
-        }, token);
+        await api.updateBill(currentBillId, billData, token);
         alert('✅ Đã cập nhật hóa đơn thành công!');
       } else {
-        await api.createBill({
-          name,
-          people: [...people],
-          items: [...items],
-          total
-        }, token);
+        await api.createBill(billData, token);
         alert('✅ Đã lưu hóa đơn thành công!');
       }
       
       await loadHistory();
       setBillName('');
       setCurrentBillId(null);
+      setCurrentImage(null); // THÊM: Reset ảnh sau khi lưu
     } catch (error) {
       console.error('Save error:', error);
       alert('❌ Lỗi khi lưu hóa đơn: ' + error.message);
@@ -263,6 +301,7 @@ export default function BillSplitter() {
     setItems(bill.items);
     setBillName(bill.name);
     setCurrentBillId(bill._id);
+    setCurrentImage(bill.image || null); // THÊM: Load ảnh từ bill
     setShowHistory(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -297,17 +336,29 @@ export default function BillSplitter() {
 
       const result = await api.extractBill(base64Data, file.type);
 
-      if (result.success && result.data.items && result.data.items.length > 0) {
-        const newItems = result.data.items.map(item => ({
-          name: item.name,
-          price: parseFloat(item.price) || 0,
-          quantity: parseFloat(item.quantity) || 1,
-          assignedTo: null
-        }));
-        setItems([...items, ...newItems]);
-        alert(`✅ Đã thêm ${newItems.length} sản phẩm từ hóa đơn!`);
-      } else {
-        alert('⚠️ AI không tìm thấy sản phẩm nào trong hóa đơn.');
+      if (result.success) {
+        // THÊM: Lưu thông tin ảnh từ Cloudinary
+        if (result.image) {
+          setCurrentImage({
+            url: result.image.url,
+            publicId: result.image.publicId,
+            originalName: file.name
+          });
+        }
+
+        // Thêm sản phẩm nếu có
+        if (result.data.items && result.data.items.length > 0) {
+          const newItems = result.data.items.map(item => ({
+            name: item.name,
+            price: parseFloat(item.price) || 0,
+            quantity: parseFloat(item.quantity) || 1,
+            assignedTo: null
+          }));
+          setItems([...items, ...newItems]);
+          alert(`✅ Đã thêm ${newItems.length} sản phẩm từ hóa đơn!`);
+        } else {
+          alert('⚠️ AI không tìm thấy sản phẩm nào trong hóa đơn.');
+        }
       }
 
     } catch (error) {
@@ -319,11 +370,87 @@ export default function BillSplitter() {
     }
   };
 
+  // THÊM: Xử lý kéo thả file
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+
+    // Kiểm tra file type
+    if (!file.type.startsWith('image/')) {
+      alert('⚠️ Vui lòng chỉ tải lên file ảnh!');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const base64Data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const result = await api.extractBill(base64Data, file.type);
+
+      if (result.success) {
+        if (result.image) {
+          setCurrentImage({
+            url: result.image.url,
+            publicId: result.image.publicId,
+            originalName: file.name
+          });
+        }
+
+        if (result.data.items && result.data.items.length > 0) {
+          const newItems = result.data.items.map(item => ({
+            name: item.name,
+            price: parseFloat(item.price) || 0,
+            quantity: parseFloat(item.quantity) || 1,
+            assignedTo: null
+          }));
+          setItems([...items, ...newItems]);
+          alert(`✅ Đã thêm ${newItems.length} sản phẩm từ hóa đơn!`);
+        } else {
+          alert('⚠️ AI không tìm thấy sản phẩm nào trong hóa đơn.');
+        }
+      }
+
+    } catch (error) {
+      console.error('Error:', error);
+      alert(`❌ Lỗi khi đọc hóa đơn: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const resetBill = () => {
-    setPeople(['Nguyễn Ngọc Tưởng', 'Dương Xuân Thắng']);
+    setPeople(['']);
     setItems([]);
     setBillName('');
     setCurrentBillId(null);
+    setCurrentImage(null); // THÊM: Reset ảnh
   };
 
   // --- NGƯỜI DÙNG & SẢN PHẨM LOGIC ---
@@ -460,7 +587,7 @@ export default function BillSplitter() {
             </div>
           </div>
 
-          {/* History Panel */}
+          {/* History Panel - CẬP NHẬT: Hiển thị ảnh thumbnail */}
           {showHistory && isAuthenticated && (
             <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
               <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
@@ -479,6 +606,21 @@ export default function BillSplitter() {
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {history.map((bill) => (
                     <div key={bill._id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
+                      {/* THÊM: Hiển thị ảnh thumbnail */}
+                      {bill.image && bill.image.url && (
+                        <div className="mb-3 relative group">
+                          <img 
+                            src={bill.image.url} 
+                            alt={bill.name}
+                            className="w-full h-40 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                          />
+                          <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                            <ImageIcon size={12} />
+                            Có ảnh
+                          </div>
+                        </div>
+                      )}
+                      
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <h3 className={`font-bold ${headerTextColor}`}>{bill.name}</h3>
@@ -516,43 +658,111 @@ export default function BillSplitter() {
             </div>
           )}
 
-          {/* Upload Image */}
+          {/* Upload Image - CẬP NHẬT: Hỗ trợ kéo thả, chụp ảnh và upload */}
           <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
             <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}>
               <Camera className="text-purple-600 dark:text-purple-400" />
               Tự động đọc hóa đơn
             </h2>
             
-            <label className="block">
-              <div className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition ${
-                isProcessing ? 'border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800' : 'border-green-300 hover:border-green-500 hover:bg-green-50 dark:hover:bg-gray-600'
-              }`}>
-                {isProcessing ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <RefreshCw className="animate-spin h-12 w-12 text-green-500 dark:text-green-400" />
-                    <p className="text-gray-600 dark:text-gray-300 font-medium">Đang đọc hóa đơn...</p>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="mx-auto mb-3 text-green-600 dark:text-green-400" size={48} />
-                    <p className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-1">
-                      Chụp hoặc tải ảnh hóa đơn
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Sử dụng Gemini AI để trích xuất thông tin sản phẩm
-                    </p>
-                  </>
-                )}
+            {/* THÊM: Preview ảnh đã upload */}
+            {currentImage && currentImage.url && (
+              <div className="mb-4 relative">
+                <img 
+                  src={currentImage.url} 
+                  alt="Bill Preview" 
+                  className="w-full max-h-80 object-contain rounded-lg border-2 border-green-500 dark:border-green-400"
+                />
+                <button
+                  onClick={() => setCurrentImage(null)}
+                  className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition shadow-lg"
+                  title="Xóa ảnh"
+                >
+                  <X size={20} />
+                </button>
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
+                    <ImageIcon size={16} />
+                    ✅ Ảnh đã lưu trên cloud
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {currentImage.originalName}
+                  </p>
+                </div>
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleImageUpload}
-                disabled={isProcessing}
-                className="hidden"
-              />
-            </label>
+            )}
+            
+            {/* THÊM: Khu vực kéo thả với 2 nút riêng */}
+            <div
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${
+                isProcessing 
+                  ? 'border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800' 
+                  : isDragging
+                  ? 'border-green-500 bg-green-100 dark:bg-green-900/20 scale-105'
+                  : 'border-green-300 hover:border-green-500 hover:bg-green-50 dark:hover:bg-gray-600'
+              }`}
+            >
+              {isProcessing ? (
+                <div className="flex flex-col items-center gap-3">
+                  <RefreshCw className="animate-spin h-12 w-12 text-green-500 dark:text-green-400" />
+                  <p className="text-gray-600 dark:text-gray-300 font-medium">Đang upload và đọc hóa đơn...</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">AI đang xử lý...</p>
+                </div>
+              ) : (
+                <>
+                  <Upload className="mx-auto mb-3 text-green-600 dark:text-green-400" size={48} />
+                  <p className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-1">
+                    {isDragging ? '📥 Thả ảnh vào đây' : 'Tải ảnh hóa đơn'}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                    Gemini AI trích xuất 
+                  </p>
+                  
+                  {/* THÊM: 2 nút riêng biệt cho chụp ảnh và upload */}
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center items-center max-w-md mx-auto">
+                    {/* Nút chụp ảnh (chỉ trên mobile) */}
+                    <label className="flex-1 w-full sm:w-auto">
+                      <div className="cursor-pointer px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center justify-center gap-2">
+                        <Camera size={20} />
+                        Chụp ảnh
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleImageUpload}
+                        disabled={isProcessing}
+                        className="hidden"
+                      />
+                    </label>
+                    
+                    {/* Nút upload từ thư viện */}
+                    <label className="flex-1 w-full sm:w-auto">
+                      <div className="cursor-pointer px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium flex items-center justify-center gap-2">
+                        <Upload size={20} />
+                        Tải ảnh lên
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={isProcessing}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+                    💡 Trên PC: Kéo thả ảnh vào khung này
+                  </p>
+                </>
+              )}
+            </div>
           </div>
 
           {/* People Management */}
@@ -730,7 +940,7 @@ export default function BillSplitter() {
             </div>
           )}
 
-          {/* Results */}
+          {/* Results - CẬP NHẬT: Sẽ in kèm ảnh */}
           {items.length > 0 && (
             <div className={`${cardColor} rounded-2xl p-6`}>
               <div className="flex justify-between items-center mb-4">
@@ -740,7 +950,7 @@ export default function BillSplitter() {
                   className="flex items-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
                 >
                   <Printer size={18} />
-                  In kết quả
+                  In kết quả {currentImage ? '(có ảnh)' : ''}
                 </button>
               </div>
 

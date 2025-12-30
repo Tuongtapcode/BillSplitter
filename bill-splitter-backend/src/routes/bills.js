@@ -2,8 +2,22 @@
 const express = require('express');
 const Bill = require('../models/Bill');
 const { authenticateToken } = require('./auth'); // Import middleware
+const cloudinary = require('../config/cloudinary'); // THÊM MỚI
 
 const router = express.Router();
+
+// THÊM MỚI: Helper function để xóa ảnh trên Cloudinary
+async function deleteCloudinaryImage(publicId) {
+    if (!publicId) return;
+    
+    try {
+        await cloudinary.uploader.destroy(publicId);
+        console.log('✅ Deleted image from Cloudinary:', publicId);
+    } catch (error) {
+        console.error('❌ Error deleting image from Cloudinary:', error);
+        // Không throw error để không làm gián đoạn flow chính
+    }
+}
 
 // Tất cả routes sau đây đều cần xác thực
 
@@ -11,13 +25,21 @@ const router = express.Router();
 router.post('/', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id; // Lấy ID từ token
-        const { name, people, items, total } = req.body;
+        const { name, people, items, total, image } = req.body; // THÊM image
 
         if (!name || !people || !items) {
              return res.status(400).json({ error: 'Missing required fields: name, people, items' });
         }
 
-        const bill = new Bill({ userId, name, people, items, total });
+        const bill = new Bill({ 
+            userId, 
+            name, 
+            people, 
+            items, 
+            total,
+            image: image || null // THÊM MỚI: Lưu thông tin ảnh nếu có
+        });
+        
         await bill.save();
         res.status(201).json({ message: 'Bill created successfully', bill });
     } catch (error) {
@@ -112,10 +134,26 @@ router.put('/:billId', authenticateToken, async (req, res) => {
              return res.status(404).json({ error: 'Bill not found or unauthorized' });
         }
 
-        const { name, people, items, total } = req.body;
+        const { name, people, items, total, image } = req.body; // THÊM image
+
+        // THÊM MỚI: Xử lý cập nhật ảnh
+        // Nếu có ảnh mới và khác ảnh cũ, xóa ảnh cũ
+        if (image && image.publicId && 
+            existingBill.image && 
+            existingBill.image.publicId !== image.publicId) {
+            await deleteCloudinaryImage(existingBill.image.publicId);
+        }
+
         const bill = await Bill.findByIdAndUpdate(
             req.params.billId,
-            { name, people, items, total, updatedAt: Date.now() },
+            { 
+                name, 
+                people, 
+                items, 
+                total, 
+                image: image || existingBill.image, // THÊM MỚI: Giữ ảnh cũ nếu không có ảnh mới
+                updatedAt: Date.now() 
+            },
             { new: true }
         );
         
@@ -135,6 +173,11 @@ router.delete('/:billId', authenticateToken, async (req, res) => {
              return res.status(404).json({ error: 'Bill not found or unauthorized' });
         }
         
+        // THÊM MỚI: Xóa ảnh trên Cloudinary nếu có
+        if (existingBill.image && existingBill.image.publicId) {
+            await deleteCloudinaryImage(existingBill.image.publicId);
+        }
+
         await Bill.findByIdAndDelete(req.params.billId);
 
         res.json({ message: 'Bill deleted successfully' });

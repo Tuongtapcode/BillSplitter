@@ -1,6 +1,6 @@
 // api/billService.js - Tách logic API ra file riêng để dễ quản lý
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://bill-splitter-backend-zju5.onrender.com/api';
 
 class BillService {
   // Gemini - Đọc hóa đơn (không cần auth)
