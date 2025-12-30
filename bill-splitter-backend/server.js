@@ -12,12 +12,22 @@ const geminiRouter = require('./src/routes/gemini'); // Router Gemini
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'https://bill-splitter-2pfsy52j3-tuongs-projects-e2efd182.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001' // in case
+  ],
+  credentials: true
+};
+
 // Connect to Database
 (async () => {
     await connectDB();
     
     // Middleware
-    app.use(cors());
+    app.use(cors(corsOptions));
     app.use(express.json({ limit: '50mb' }));
     app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
