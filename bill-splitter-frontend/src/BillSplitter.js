@@ -112,7 +112,7 @@ export default function BillSplitter() {
   const [currentBillId, setCurrentBillId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAuthForm, setShowAuthForm] = useState(false);
-  
+
   // State quản lý ảnh
   const [images, setImages] = useState([]);
   const [currentImage, setCurrentImage] = useState(null);
@@ -160,9 +160,10 @@ export default function BillSplitter() {
     return () => mediaQuery.removeEventListener('change', handler);
   }, [theme]);
 
-  // --- PRINT LOGIC (FIX LỖI TRẮNG TRANG ĐẦU) ---
+  // --- PRINT LOGIC ---
   const handlePrintResult = () => {
     const results = calculateSplit();
+    const sharedItems = items.filter(item => item.assignedTo.length === 0); // Lấy danh sách món chung
 
     // Tạo Iframe ẩn
     const iframe = document.createElement('iframe');
@@ -174,8 +175,8 @@ export default function BillSplitter() {
     const doc = iframe.contentWindow.document;
 
     // Lấy danh sách ảnh cần in
-    const imagesToPrint = (images && images.length > 0) 
-      ? images 
+    const imagesToPrint = (images && images.length > 0)
+      ? images
       : (currentImage ? [currentImage] : []);
 
     // HTML cho ảnh
@@ -195,93 +196,33 @@ export default function BillSplitter() {
         <meta charset="UTF-8">
         <title>${billName || 'Hóa đơn chia tiền'}</title>
         <style>
-          /* RESET CSS để tránh margin thừa gây trắng trang */
+          /* GIỮ NGUYÊN CSS CŨ */
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          
-          /* Cấu hình trang in */
-          @page {
-            size: A4;
-            margin: 5mm; /* Margin nhỏ để tận dụng giấy */
-          }
-
-          body { 
-            font-family: 'Segoe UI', Arial, sans-serif; 
-            background: white; 
-            color: #1f2937; 
-            width: 100%;
-            /* Không set height 100% để tránh lỗi overflow */
-            padding: 10px; 
-          }
-          
-          /* Header */
+          @page { size: A4; margin: 5mm; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; background: white; color: #1f2937; width: 100%; padding: 10px; }
           .header { text-align: center; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 2px solid #10b981; }
           .header h1 { font-size: 20px; color: #059669; margin-bottom: 5px; text-transform: uppercase; }
           .header .info { font-size: 11px; color: #6b7280; margin: 2px 0; }
-          
-          /* Image Section */
-          .image-wrapper {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 15px;
-            page-break-inside: avoid; /* Cố gắng không cắt đôi ảnh */
-          }
-          
-          /* Ngắt trang sau mỗi ảnh để gọn gàng */
-          .image-wrapper { page-break-after: always; }
+          .image-wrapper { width: 100%; display: flex; flex-direction: column; align-items: center; margin-bottom: 15px; page-break-inside: avoid; page-break-after: always; }
           .image-wrapper:last-of-type { page-break-after: auto; }
-
-          .image-wrapper h3 {
-             width: 100%; text-align: left; font-size: 13px; color: #2563eb; 
-             border-bottom: 1px solid #e5e7eb; margin-bottom: 5px; padding-bottom: 2px;
-          }
-
-          .img-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-          }
-
-          .bill-image {
-            width: auto;
-            max-width: 100%;
-            /* QUAN TRỌNG: Giới hạn chiều cao 80vh để chừa chỗ cho Header ở trang 1 */
-            /* Nếu để 100% hoặc quá lớn, nó sẽ đẩy sang trang 2 */
-            max-height: 80vh; 
-            object-fit: contain; 
-            border: 1px solid #ddd;
-            border-radius: 4px;
-          }
-
-          /* Content */
+          .image-wrapper h3 { width: 100%; text-align: left; font-size: 13px; color: #2563eb; border-bottom: 1px solid #e5e7eb; margin-bottom: 5px; padding-bottom: 2px; }
+          .img-container { width: 100%; display: flex; justify-content: center; }
+          .bill-image { width: auto; max-width: 100%; max-height: 80vh; object-fit: contain; border: 1px solid #ddd; border-radius: 4px; }
           .section { margin: 15px 0; page-break-inside: avoid; }
           .section-title { font-size: 15px; font-weight: bold; color: #2563eb; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
-          
           table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 11px; }
           th { background: #f3f4f6; padding: 5px; text-align: left; border-bottom: 1px solid #d1d5db; color: #374151; font-weight: bold; }
           td { padding: 5px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
-          
           .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-          .person-card { 
-            background: #fcfdfc; border: 1px solid #10b981; border-radius: 6px; 
-            padding: 8px; page-break-inside: avoid; box-shadow: 0 1px 1px rgba(0,0,0,0.05);
-          }
+          .person-card { background: #fcfdfc; border: 1px solid #10b981; border-radius: 6px; padding: 8px; page-break-inside: avoid; box-shadow: 0 1px 1px rgba(0,0,0,0.05); }
           .person-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #10b981; }
           .person-name { font-size: 13px; font-weight: bold; color: #065f46; }
           .person-total { font-size: 14px; font-weight: bold; color: #059669; }
           .breakdown-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-          
-          .item-list { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e5e7eb; background: #f9fafb; padding: 4px; border-radius: 4px; }
+          .item-list { margin-top: 2px; padding-top: 2px; border-top: 1px dashed #e5e7eb; background: #f9fafb; padding: 4px; border-radius: 4px; margin-bottom: 4px; }
           .item-detail { font-size: 10px; color: #4b5563; margin-bottom: 2px; display: flex; justify-content: space-between; }
-          
           .footer { margin-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 9px; color: #9ca3af; padding-top: 5px; }
-
-          @media print {
-            body { margin: 0; padding: 0; }
-            /* Đảm bảo bảng không bị cắt dòng giữa chừng */
-            tr { page-break-inside: avoid; }
-          }
+          @media print { body { margin: 0; padding: 0; } tr { page-break-inside: avoid; } }
         </style>
       </head>
       <body>
@@ -306,14 +247,14 @@ export default function BillSplitter() {
             </thead>
             <tbody>
             ${items.map(item => {
-              const numPeople = item.assignedTo.length || people.length;
-              const sharedWith = item.assignedTo.length === 0 
-                ? `<span style="color:#2563eb">Tất cả</span>`
-                : item.assignedTo.length === 1 
-                  ? `<b>${people[item.assignedTo[0]]}</b>`
-                  : `${item.assignedTo.length} người`;
-              
-              return `
+      const numPeople = item.assignedTo.length || people.length;
+      const sharedWith = item.assignedTo.length === 0
+        ? `<span style="color:#2563eb">Tất cả</span>`
+        : item.assignedTo.length === 1
+          ? `<b>${people[item.assignedTo[0]]}</b>`
+          : `${item.assignedTo.length} người`;
+
+      return `
                 <tr>
                   <td>${item.name}</td>
                   <td style="text-align:center">${item.quantity}</td>
@@ -324,7 +265,7 @@ export default function BillSplitter() {
                     <div style="color:#10b981">(${((item.price * item.quantity) / numPeople).toLocaleString('vi-VN')}/ng)</div>
                   </td>
                 </tr>`;
-            }).join('')}
+    }).join('')}
             </tbody>
           </table>
         </div>
@@ -338,8 +279,21 @@ export default function BillSplitter() {
                 <div class="person-name">${result.name}</div>
                 <div class="person-total">${result.total.toLocaleString('vi-VN')}đ</div>
               </div>
+              
               <div class="breakdown-row"><span>🤝 Chia chung</span><strong>${result.shared.toLocaleString('vi-VN')}đ</strong></div>
-              ${result.personal > 0 ? `<div class="breakdown-row"><span>👤 Riêng</span><strong>${result.personal.toLocaleString('vi-VN')}đ</strong></div>` : ''}
+              
+              ${sharedItems.length > 0 ? `
+                <div class="item-list" style="background-color: #f0fdf4; border-color: #bbf7d0;">
+                  ${sharedItems.map(item => `
+                    <div class="item-detail">
+                      <span>• ${item.name} (x${item.quantity})</span>
+                      <span>${((item.price * item.quantity) / people.length).toLocaleString('vi-VN')}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+
+              ${result.personal > 0 ? `<div class="breakdown-row" style="margin-top:4px"><span>👤 Riêng</span><strong>${result.personal.toLocaleString('vi-VN')}đ</strong></div>` : ''}
               ${result.personalItems.length > 0 ? `
                 <div class="item-list">
                   ${result.personalItems.map(item => `<div class="item-detail"><span>• ${item.name} (x${item.quantity})</span><span>${((item.price * item.quantity) / (item.assignedTo.length || 1)).toLocaleString('vi-VN')}</span></div>`).join('')}
@@ -353,41 +307,10 @@ export default function BillSplitter() {
       </html>
     `;
 
-    doc.open();
-    doc.write(content);
-    doc.close();
-
-    const doPrint = () => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-      setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1000);
-    };
-
-    if (imagesToPrint.length > 0) {
-      const imgElements = Array.from(doc.querySelectorAll('.bill-image'));
-      let loadedCount = 0;
-      const checkAllLoaded = () => {
-        loadedCount++;
-        if (loadedCount >= imgElements.length) doPrint();
-      };
-
-      if (imgElements.length === 0) {
-        doPrint();
-      } else {
-        imgElements.forEach(img => {
-          if (img.complete) checkAllLoaded();
-          else {
-            img.onload = checkAllLoaded;
-            img.onerror = checkAllLoaded;
-          }
-        });
-        setTimeout(() => {
-          if (document.body.contains(iframe) && loadedCount < imgElements.length) doPrint();
-        }, 3000);
-      }
-    } else {
-      doPrint();
-    }
+    // ... (Giữ nguyên phần code xử lý iframe và in ở dưới)
+    doc.open(); doc.write(content); doc.close();
+    const doPrint = () => { iframe.contentWindow.focus(); iframe.contentWindow.print(); setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1000); };
+    if (imagesToPrint.length > 0) { const imgElements = Array.from(doc.querySelectorAll('.bill-image')); let loadedCount = 0; const checkAllLoaded = () => { loadedCount++; if (loadedCount >= imgElements.length) doPrint(); }; if (imgElements.length === 0) { doPrint(); } else { imgElements.forEach(img => { if (img.complete) checkAllLoaded(); else { img.onload = checkAllLoaded; img.onerror = checkAllLoaded; } }); setTimeout(() => { if (document.body.contains(iframe) && loadedCount < imgElements.length) doPrint(); }, 3000); } } else { doPrint(); }
   };
 
   // --- API CALLS ---
@@ -425,8 +348,8 @@ export default function BillSplitter() {
         people: [...people],
         items: [...items],
         total,
-        images: images, 
-        image: images[0] || null 
+        images: images,
+        image: images[0] || null
       };
 
       if (currentBillId) {
@@ -439,7 +362,7 @@ export default function BillSplitter() {
       await loadHistory();
       setBillName('');
       setCurrentBillId(null);
-      setImages([]); 
+      setImages([]);
       setCurrentImage(null);
     } catch (error) {
       console.error('Save error:', error);
@@ -595,7 +518,7 @@ export default function BillSplitter() {
   const togglePersonForItem = (itemIndex, personIndex) => { const newItems = [...items]; const currentAssigned = newItems[itemIndex].assignedTo; if (currentAssigned.includes(personIndex)) { newItems[itemIndex].assignedTo = currentAssigned.filter(p => p !== personIndex); } else { newItems[itemIndex].assignedTo = [...currentAssigned, personIndex]; } setItems(newItems); };
   const setAllPeopleForItem = (itemIndex) => { const newItems = [...items]; newItems[itemIndex].assignedTo = []; setItems(newItems); };
   const removeItem = (index) => { setItems(items.filter((_, i) => i !== index)); };
-  
+
   const calculateSplit = () => {
     const sharedItems = items.filter(item => item.assignedTo.length === 0);
     const sharedTotal = sharedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -641,16 +564,16 @@ export default function BillSplitter() {
           {showHistory && isAuthenticated && (
             <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
               <h2 className={`text-xl font-bold ${headerTextColor} mb-4 flex items-center gap-2`}><FolderOpen className="text-blue-600 dark:text-blue-400" />Lịch sử hóa đơn</h2>
-              {isLoading ? <div className="text-center py-8"><RefreshCw className="animate-spin h-8 w-8 text-blue-500 mx-auto mb-2" /><p className="text-gray-500 dark:text-gray-400">Đang tải...</p></div> : history.length === 0 ? <p className="text-gray-500 dark:text-gray-400 text-center py-8">Chưa có hóa đơn nào được lưu</p> : 
+              {isLoading ? <div className="text-center py-8"><RefreshCw className="animate-spin h-8 w-8 text-blue-500 mx-auto mb-2" /><p className="text-gray-500 dark:text-gray-400">Đang tải...</p></div> : history.length === 0 ? <p className="text-gray-500 dark:text-gray-400 text-center py-8">Chưa có hóa đơn nào được lưu</p> :
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {history.map((bill) => (
                     <div key={bill._id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
                       {((bill.images && bill.images.length > 0) || (bill.image && bill.image.url)) && (
                         <div className="mb-3 relative group">
-                          <img 
-                            src={bill.images?.[0]?.url || bill.image?.url} 
-                            alt={bill.name} 
-                            className="w-full h-40 object-cover rounded-lg border border-gray-300 dark:border-gray-600" 
+                          <img
+                            src={bill.images?.[0]?.url || bill.image?.url}
+                            alt={bill.name}
+                            className="w-full h-40 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
                           />
                           <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
                             <ImageIcon size={12} />{bill.images?.length > 1 ? `${bill.images.length} ảnh` : 'Có ảnh'}
@@ -681,11 +604,11 @@ export default function BillSplitter() {
                     <div key={index} className="relative group bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 shadow-sm hover:shadow-md transition-shadow">
                       {/* Dùng object-contain và padding để hiển thị trọn vẹn hóa đơn dài */}
                       <div className="w-full h-48 md:h-56 bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-2">
-                         <img src={img.url} alt={`Bill ${index + 1}`} className="w-full h-full object-contain" />
+                        <img src={img.url} alt={`Bill ${index + 1}`} className="w-full h-full object-contain" />
                       </div>
-                      
+
                       <div className="absolute top-0 left-0 w-full h-full bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
-                      
+
                       <button onClick={() => removeImage(index)} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-80 hover:opacity-100 hover:scale-110 transition shadow-lg z-10" title="Xóa ảnh">
                         <X size={14} />
                       </button>
@@ -712,7 +635,7 @@ export default function BillSplitter() {
                   <p className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-1">{isDragging ? '📥 Thả ảnh vào đây' : 'Tải thêm ảnh hóa đơn'}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Bạn có thể upload nhiều ảnh cùng lúc</p>
                   <div className="flex flex-col sm:flex-row gap-3 justify-center items-center max-w-md mx-auto">
-                    <label className="flex-1 w-full sm:w-auto"><div className="cursor-pointer px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center justify-center gap-2"><Camera size={20} />Chụp tiếp</div><input type="file" accept="image/*" capture="environment" onChange={handleImageUpload} disabled={isProcessing} className="hidden" /></label>
+                    <label className="flex-1 w-full sm:w-auto"><div className="cursor-pointer px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center justify-center gap-2"><Camera size={20} />Chụp ảnh</div><input type="file" accept="image/*" capture="environment" onChange={handleImageUpload} disabled={isProcessing} className="hidden" /></label>
                     <label className="flex-1 w-full sm:w-auto"><div className="cursor-pointer px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium flex items-center justify-center gap-2"><Upload size={20} />Tải ảnh lên</div><input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} disabled={isProcessing} className="hidden" /></label>
                   </div>
                 </>
@@ -755,7 +678,7 @@ export default function BillSplitter() {
               {items.map((item, index) => (
                 <div key={index} className={`${itemCardStyle} transition-all duration-200 hover:shadow-md`}>
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-                    
+
                     {/* Cột 1: Tên sản phẩm */}
                     <div className="md:col-span-4">
                       <label className="block md:hidden text-xs font-medium text-gray-500 mb-1">Tên món</label>
@@ -801,22 +724,20 @@ export default function BillSplitter() {
                       <div className="flex flex-wrap gap-1.5 bg-white dark:bg-gray-900/50 p-1.5 rounded-lg border border-gray-100 dark:border-gray-600">
                         <button
                           onClick={() => setAllPeopleForItem(index)}
-                          className={`px-2 py-1 text-xs rounded transition-colors ${
-                            item.assignedTo.length === 0
-                              ? 'bg-blue-500 text-white shadow-sm'
-                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300'
-                          }`}
+                          className={`px-2 py-1 text-xs rounded transition-colors ${item.assignedTo.length === 0
+                            ? 'bg-blue-500 text-white shadow-sm'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300'
+                            }`}
                         >
                           Tất cả
                         </button>
                         {people.map((person, pIndex) => (
                           <label
                             key={pIndex}
-                            className={`flex items-center gap-1 px-2 py-1 text-xs rounded cursor-pointer select-none transition-colors border ${
-                              item.assignedTo.includes(pIndex)
-                                ? 'bg-green-100 border-green-200 text-green-800 dark:bg-green-900/30 dark:border-green-800 dark:text-green-300'
-                                : 'bg-gray-50 border-transparent text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400'
-                            }`}
+                            className={`flex items-center gap-1 px-2 py-1 text-xs rounded cursor-pointer select-none transition-colors border ${item.assignedTo.includes(pIndex)
+                              ? 'bg-green-100 border-green-200 text-green-800 dark:bg-green-900/30 dark:border-green-800 dark:text-green-300'
+                              : 'bg-gray-50 border-transparent text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400'
+                              }`}
                           >
                             <input
                               type="checkbox"
@@ -843,17 +764,17 @@ export default function BillSplitter() {
 
                   {/* Thành tiền dưới mỗi món */}
                   <div className={`mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-600 flex justify-between items-center text-sm`}>
-                       <span className="text-gray-400 text-xs italic">
-                          {item.quantity} x {item.price.toLocaleString('vi-VN')}đ
-                       </span>
-                       <span className={`font-bold ${textColor}`}>
-                          {(item.price * item.quantity).toLocaleString('vi-VN')}đ
-                       </span>
+                    <span className="text-gray-400 text-xs italic">
+                      {item.quantity} x {item.price.toLocaleString('vi-VN')}đ
+                    </span>
+                    <span className={`font-bold ${textColor}`}>
+                      {(item.price * item.quantity).toLocaleString('vi-VN')}đ
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
-            
+
             <button
               onClick={addItem}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition font-bold shadow-lg shadow-green-500/30 active:scale-95 transform duration-100"
@@ -885,10 +806,55 @@ export default function BillSplitter() {
                   <div className="space-y-4">
                     {results.map((result, index) => (
                       <div key={index} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-gray-800 dark:to-gray-700">
-                        <div className="flex justify-between items-start mb-3"><h3 className={`text-lg font-bold ${headerTextColor}`}>{result.name}</h3><div className="text-right"><div className="text-2xl font-bold text-green-600 dark:text-green-400">{result.total.toLocaleString('vi-VN')}đ</div></div></div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between text-gray-600 dark:text-gray-400"><span>Phần chia chung ({people.length} người):</span><span className="font-semibold">{result.shared.toLocaleString('vi-VN')}đ</span></div>
-                          {result.personal > 0 && (<><div className="flex justify-between text-gray-600 dark:text-gray-400"><span>Sản phẩm riêng:</span><span className="font-semibold">{result.personal.toLocaleString('vi-VN')}đ</span></div><div className="mt-2 pl-4 border-l-2 border-blue-300 dark:border-blue-500">{result.personalItems.map((item, idx) => (<div key={idx} className="text-xs text-gray-500 dark:text-gray-400 mb-1">• {item.name} x{item.quantity} = {(item.price * item.quantity).toLocaleString('vi-VN')}đ</div>))}</div></>)}
+                        {/* Header Tên + Tổng tiền */}
+                        <div className="flex justify-between items-start mb-3">
+                          <h3 className={`text-lg font-bold ${headerTextColor}`}>{result.name}</h3>
+                          <div className="text-right"><div className="text-2xl font-bold text-green-600 dark:text-green-400">{result.total.toLocaleString('vi-VN')}đ</div></div>
+                        </div>
+
+                        <div className="space-y-4 text-sm">
+                          {/* --- PHẦN CHIA CHUNG --- */}
+                          <div>
+                            <div className="flex justify-between text-gray-700 dark:text-gray-300 font-medium bg-green-100 dark:bg-green-900/30 p-2 rounded-t-lg">
+                              <span>🤝 Chia chung ({people.length} người):</span>
+                              <span className="font-bold">{result.shared.toLocaleString('vi-VN')}đ</span>
+                            </div>
+
+                            {/* Danh sách món chung */}
+                            {items.filter(i => i.assignedTo.length === 0).length > 0 && (
+                              <div className="bg-white dark:bg-gray-800 p-2 rounded-b-lg border border-green-100 dark:border-green-900/30 shadow-sm">
+                                {items.filter(i => i.assignedTo.length === 0).map((item, idx) => (
+                                  <div key={idx} className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 flex justify-between items-center border-b border-dashed border-gray-100 dark:border-gray-700 last:border-0 pb-1 last:pb-0">
+                                    <span>• {item.name} (x{item.quantity})</span>
+                                    {/* Hiển thị số tiền người này phải trả cho món đó */}
+                                    <span className="font-mono text-green-600 dark:text-green-400">
+                                      {((item.price * item.quantity) / people.length).toLocaleString('vi-VN')}đ
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* --- PHẦN RIÊNG --- */}
+                          {result.personal > 0 && (
+                            <div>
+                              <div className="flex justify-between text-gray-700 dark:text-gray-300 font-medium bg-blue-100 dark:bg-blue-900/30 p-2 rounded-t-lg">
+                                <span>👤 Sản phẩm riêng:</span>
+                                <span className="font-bold">{result.personal.toLocaleString('vi-VN')}đ</span>
+                              </div>
+                              <div className="bg-white dark:bg-gray-800 p-2 rounded-b-lg border border-blue-100 dark:border-blue-900/30 shadow-sm">
+                                {result.personalItems.map((item, idx) => (
+                                  <div key={idx} className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 flex justify-between items-center border-b border-dashed border-gray-100 dark:border-gray-700 last:border-0 pb-1 last:pb-0">
+                                    <span>• {item.name} (x{item.quantity})</span>
+                                    <span className="font-mono text-blue-600 dark:text-blue-400">
+                                      {((item.price * item.quantity) / (item.assignedTo.length || 1)).toLocaleString('vi-VN')}đ
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
