@@ -352,7 +352,7 @@ export default function BillSplitter() {
             name: item.name,
             price: parseFloat(item.price) || 0,
             quantity: parseFloat(item.quantity) || 1,
-            assignedTo: null
+            assignedTo: []
           }));
           setItems([...items, ...newItems]);
           alert(`✅ Đã thêm ${newItems.length} sản phẩm từ hóa đơn!`);
@@ -428,7 +428,7 @@ export default function BillSplitter() {
             name: item.name,
             price: parseFloat(item.price) || 0,
             quantity: parseFloat(item.quantity) || 1,
-            assignedTo: null
+            assignedTo: []
           }));
           setItems([...items, ...newItems]);
           alert(`✅ Đã thêm ${newItems.length} sản phẩm từ hóa đơn!`);
@@ -446,7 +446,7 @@ export default function BillSplitter() {
   };
 
   const resetBill = () => {
-    setPeople(['']);
+    setPeople([]);
     setItems([]);
     setBillName('');
     setCurrentBillId(null);
@@ -468,8 +468,7 @@ export default function BillSplitter() {
       setPeople(newPeople);
       setItems(items.map(item => ({
         ...item,
-        assignedTo: item.assignedTo === index ? null : 
-                    item.assignedTo > index ? item.assignedTo - 1 : item.assignedTo
+        assignedTo: item.assignedTo.filter(p => p !== index).map(p => p > index ? p - 1 : p)
       })));
     }
   };
@@ -479,7 +478,7 @@ export default function BillSplitter() {
       name: '',
       price: 0,
       quantity: 1,
-      assignedTo: null
+      assignedTo: [] // Mảng rỗng = chia cho tất cả
     }]);
   };
 
@@ -489,21 +488,46 @@ export default function BillSplitter() {
     setItems(newItems);
   };
 
+  // Toggle người được gán cho sản phẩm
+  const togglePersonForItem = (itemIndex, personIndex) => {
+    const newItems = [...items];
+    const currentAssigned = newItems[itemIndex].assignedTo;
+    
+    if (currentAssigned.includes(personIndex)) {
+      // Bỏ người này ra
+      newItems[itemIndex].assignedTo = currentAssigned.filter(p => p !== personIndex);
+    } else {
+      // Thêm người này vào
+      newItems[itemIndex].assignedTo = [...currentAssigned, personIndex];
+    }
+    
+    setItems(newItems);
+  };
+
+  // Đặt tất cả mọi người cho sản phẩm
+  const setAllPeopleForItem = (itemIndex) => {
+    const newItems = [...items];
+    newItems[itemIndex].assignedTo = [];
+    setItems(newItems);
+  };
+
   const removeItem = (index) => {
     setItems(items.filter((_, i) => i !== index));
   };
 
   const calculateSplit = () => {
-    const sharedItems = items.filter(item => item.assignedTo === null);
+    if (people.length === 0) return [];
+    
+    const sharedItems = items.filter(item => item.assignedTo.length === 0);
     const sharedTotal = sharedItems.reduce((sum, item) => 
       sum + (item.price * item.quantity), 0
     );
     const sharedPerPerson = sharedTotal / people.length;
 
     return people.map((person, personIndex) => {
-      const personalItems = items.filter(item => item.assignedTo === personIndex);
+      const personalItems = items.filter(item => item.assignedTo.includes(personIndex));
       const personalTotal = personalItems.reduce((sum, item) => 
-        sum + (item.price * item.quantity), 0
+        sum + (item.price * item.quantity) / item.assignedTo.length, 0
       );
       
       return {
@@ -858,18 +882,25 @@ export default function BillSplitter() {
                       className={`md:col-span-2 ${inputStyle}`}
                     />
                     
-                    <select
-                      value={item.assignedTo === null ? 'shared' : item.assignedTo}
-                      onChange={(e) => updateItem(index, 'assignedTo', e.target.value === 'shared' ? null : parseInt(e.target.value))}
-                      className={`md:col-span-3 ${inputStyle}`}
-                    >
-                      <option value="shared">🤝 Chia chung</option>
+                    <div className="md:col-span-3 flex flex-wrap gap-1">
+                      <button
+                        onClick={() => setAllPeopleForItem(index)}
+                        className={`px-2 py-1 text-xs rounded ${item.assignedTo.length === 0 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        🤝 Tất cả
+                      </button>
                       {people.map((person, pIndex) => (
-                        <option key={pIndex} value={pIndex}>
-                          👤 {person}
-                        </option>
+                        <label key={pIndex} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 rounded cursor-pointer hover:bg-gray-200">
+                          <input
+                            type="checkbox"
+                            checked={item.assignedTo.includes(pIndex)}
+                            onChange={() => togglePersonForItem(index, pIndex)}
+                            className="w-3 h-3"
+                          />
+                          {person}
+                        </label>
                       ))}
-                    </select>
+                    </div>
                     
                     <button
                       onClick={() => removeItem(index)}
