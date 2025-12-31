@@ -6,8 +6,7 @@ import Footer from './components/layout/Footer';
 import AuthForm from './components/AuthForm';
 
 // === CẤU HÌNH API BACKEND ===
-const API_BASE_URL = process.env.REACT_APP_API_URL;
-
+const API_BASE_URL = "https://bill-splitter-backend-zju5.onrender.com/api";
 // === API Service ===
 const api = {
   // Gemini - Đọc hóa đơn (không cần auth)
