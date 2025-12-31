@@ -5,7 +5,7 @@ require('dotenv').config();
 
 // Import các modules đã tách
 const connectDB = require('./src/config/db');
-const { authRouter } = require('./src/routes/auth'); // Router Auth
+const { router: authRouter } = require('./src/routes/auth'); // Router Auth
 const billsRouter = require('./src/routes/bills'); // Router Bills
 const geminiRouter = require('./src/routes/gemini'); // Router Gemini
 
@@ -15,11 +15,12 @@ const PORT = process.env.PORT || 3001;
 // CORS configuration
 const corsOptions = {
   origin: [
-    'https://bill-splitter-2pfsy52j3-tuongs-projects-e2efd182.vercel.app',
+    'https://bill-splitter-pi-rose.vercel.app',
     'http://localhost:3000',
-    'http://localhost:3001' // in case
+
   ],
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 200 // Một số trình duyệt cũ/proxy cần cái này
 };
 
 // Connect to Database
