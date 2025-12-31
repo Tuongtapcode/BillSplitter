@@ -6,7 +6,8 @@ import Footer from './components/layout/Footer';
 import AuthForm from './components/AuthForm';
 
 // === CẤU HÌNH API BACKEND ===
-const API_BASE_URL = "https://bill-splitter-backend-zju5.onrender.com/api";
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
 // === API Service ===
 const api = {
   // Gemini - Đọc hóa đơn (không cần auth)
@@ -732,25 +733,133 @@ export default function BillSplitter() {
 
           {/* Items List */}
           <div className={`${cardColor} rounded-2xl p-6 mb-6`}>
-            <h2 className={`text-xl font-bold ${headerTextColor} mb-4`}>Danh sách sản phẩm</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className={`text-xl font-bold ${headerTextColor}`}>Danh sách sản phẩm</h2>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {items.length} món
+              </span>
+            </div>
+
+            {/* --- THÊM: Hàng tiêu đề cho giao diện Desktop --- */}
+            {items.length > 0 && (
+              <div className="hidden md:grid grid-cols-12 gap-3 mb-2 px-4 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <div className="col-span-4">Tên món</div>
+                <div className="col-span-2">Đơn giá</div>
+                <div className="col-span-2">Số lượng</div>
+                <div className="col-span-3">Người trả</div>
+                <div className="col-span-1 text-center">Xóa</div>
+              </div>
+            )}
+
             <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
               {items.map((item, index) => (
-                <div key={index} className={itemCardStyle}>
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                    <input type="text" value={item.name} onChange={(e) => updateItem(index, 'name', e.target.value)} placeholder="Tên sản phẩm" className={`md:col-span-4 ${inputStyle}`} />
-                    <input type="number" value={item.price} onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)} placeholder="Giá" className={`md:col-span-2 ${inputStyle}`} />
-                    <input type="number" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 1)} placeholder="SL" className={`md:col-span-2 ${inputStyle}`} />
-                    <div className="md:col-span-3 flex flex-wrap gap-1">
-                      <button onClick={() => setAllPeopleForItem(index)} className={`px-2 py-1 text-xs rounded ${item.assignedTo.length === 0 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>🤝 Tất cả</button>
-                      {people.map((person, pIndex) => (<label key={pIndex} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 rounded cursor-pointer hover:bg-gray-200"><input type="checkbox" checked={item.assignedTo.includes(pIndex)} onChange={() => togglePersonForItem(index, pIndex)} className="w-3 h-3" />{person}</label>))}
+                <div key={index} className={`${itemCardStyle} transition-all duration-200 hover:shadow-md`}>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                    
+                    {/* Cột 1: Tên sản phẩm */}
+                    <div className="md:col-span-4">
+                      <label className="block md:hidden text-xs font-medium text-gray-500 mb-1">Tên món</label>
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => updateItem(index, 'name', e.target.value)}
+                        placeholder="Ví dụ: Cà phê sữa..."
+                        className={`w-full ${inputStyle}`}
+                      />
                     </div>
-                    <button onClick={() => removeItem(index)} className="md:col-span-1 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center"><Trash2 size={20} /></button>
+
+                    {/* Cột 2: Đơn giá (Thêm hậu tố đ) */}
+                    <div className="md:col-span-2 relative">
+                      <label className="block md:hidden text-xs font-medium text-gray-500 mb-1">Đơn giá</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={item.price}
+                          onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
+                          placeholder="0"
+                          className={`w-full ${inputStyle} pr-8 font-mono`} // pr-8 để chừa chỗ cho chữ đ
+                        />
+                        <span className="absolute right-3 top-2.5 text-gray-400 text-sm font-bold">đ</span>
+                      </div>
+                    </div>
+
+                    {/* Cột 3: Số lượng */}
+                    <div className="md:col-span-2">
+                      <label className="block md:hidden text-xs font-medium text-gray-500 mb-1">Số lượng</label>
+                      <input
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
+                        placeholder="1"
+                        className={`w-full ${inputStyle} text-center`}
+                      />
+                    </div>
+
+                    {/* Cột 4: Checkbox người trả */}
+                    <div className="md:col-span-3">
+                      <label className="block md:hidden text-xs font-medium text-gray-500 mb-1">Người trả tiền</label>
+                      <div className="flex flex-wrap gap-1.5 bg-white dark:bg-gray-900/50 p-1.5 rounded-lg border border-gray-100 dark:border-gray-600">
+                        <button
+                          onClick={() => setAllPeopleForItem(index)}
+                          className={`px-2 py-1 text-xs rounded transition-colors ${
+                            item.assignedTo.length === 0
+                              ? 'bg-blue-500 text-white shadow-sm'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          Tất cả
+                        </button>
+                        {people.map((person, pIndex) => (
+                          <label
+                            key={pIndex}
+                            className={`flex items-center gap-1 px-2 py-1 text-xs rounded cursor-pointer select-none transition-colors border ${
+                              item.assignedTo.includes(pIndex)
+                                ? 'bg-green-100 border-green-200 text-green-800 dark:bg-green-900/30 dark:border-green-800 dark:text-green-300'
+                                : 'bg-gray-50 border-transparent text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={item.assignedTo.includes(pIndex)}
+                              onChange={() => togglePersonForItem(index, pIndex)}
+                              className="hidden" // Ẩn checkbox mặc định đi cho đẹp
+                            />
+                            {/* Dùng màu chữ để báo hiệu đã chọn thay vì checkbox thô */}
+                            <span className={item.assignedTo.includes(pIndex) ? 'font-bold' : ''}>{person}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Cột 5: Nút xóa */}
+                    <button
+                      onClick={() => removeItem(index)}
+                      className="md:col-span-1 h-[42px] w-full md:w-auto flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors mt-6 md:mt-0"
+                      title="Xóa món này"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
-                  <div className={`mt-2 text-right text-sm font-semibold ${textColor}`}>Thành tiền: {(item.price * item.quantity).toLocaleString('vi-VN')}đ</div>
+
+                  {/* Thành tiền dưới mỗi món */}
+                  <div className={`mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-600 flex justify-between items-center text-sm`}>
+                       <span className="text-gray-400 text-xs italic">
+                          {item.quantity} x {item.price.toLocaleString('vi-VN')}đ
+                       </span>
+                       <span className={`font-bold ${textColor}`}>
+                          {(item.price * item.quantity).toLocaleString('vi-VN')}đ
+                       </span>
+                  </div>
                 </div>
               ))}
             </div>
-            <button onClick={addItem} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium"><Plus size={20} />Thêm sản phẩm thủ công</button>
+            
+            <button
+              onClick={addItem}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition font-bold shadow-lg shadow-green-500/30 active:scale-95 transform duration-100"
+            >
+              <Plus size={20} /> Thêm món mới
+            </button>
           </div>
 
           {/* Save Bill */}
