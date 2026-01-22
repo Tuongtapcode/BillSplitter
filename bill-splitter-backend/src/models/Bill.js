@@ -5,19 +5,20 @@ const itemSchema = new mongoose.Schema({
     name: { type: String, required: true },
     price: { type: Number, required: true },
     quantity: { type: Number, default: 1 },
-    assignedTo: { type: Number, default: null }
-}, { _id: false }); // Không cần ID cho Sub-document Item
+    // ✅ SỬA: Cho phép nhiều người cùng chia 1 món
+    assignedTo: [{ type: Number }] // Array of person indices
+}, { _id: false });
 
-// THÊM MỚI: Schema cho thông tin ảnh
+// Schema cho thông tin ảnh
 const imageSchema = new mongoose.Schema({
-    url: { type: String },           // URL ảnh từ Cloudinary
-    publicId: { type: String },      // Public ID để xóa ảnh trên Cloudinary
-    originalName: { type: String }   // Tên file gốc
+    url: { type: String },
+    publicId: { type: String },
+    originalName: { type: String }
 }, { _id: false });
 
 const billSchema = new mongoose.Schema({
     userId: {
-        type: String, // Thay đổi từ ObjectId sang String
+        type: String,
         required: true,
         index: true
     },
@@ -26,10 +27,19 @@ const billSchema = new mongoose.Schema({
     items: [itemSchema],
     total: { type: Number, required: true },
     
-    // THÊM MỚI: Trường lưu thông tin ảnh hóa đơn
+    // ✅ THÊM: Hỗ trợ nhiều ảnh
+    images: [imageSchema], // Nhiều ảnh
+    
+    // Giữ lại để backward compatibility
     image: {
         type: imageSchema,
-        default: null  // Mặc định là null nếu không có ảnh
+        default: null
+    },
+    
+    // ✅ THÊM: Ảnh hóa đơn đã xuất (exported bill image)
+    exportedImage: {
+        type: imageSchema,
+        default: null
     },
     
     createdAt: { type: Date, default: Date.now, index: true },
