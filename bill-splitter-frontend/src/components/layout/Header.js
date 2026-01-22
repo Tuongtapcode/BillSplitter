@@ -16,7 +16,7 @@ export default function Header({ user, onLogin, onLogout, theme, onThemeChange }
                 Bill Splitter AI
               </h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Powered by Gemini
+                AI Reader Engine: Gemini
               </p>
             </div>
           </div>
@@ -27,33 +27,30 @@ export default function Header({ user, onLogin, onLogout, theme, onThemeChange }
             <div className="flex space-x-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
               <button
                 onClick={() => onThemeChange('light')}
-                className={`p-2 rounded-lg transition ${
-                  theme === 'light' 
-                    ? 'bg-white shadow text-yellow-500' 
-                    : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+                className={`p-2 rounded-lg transition ${theme === 'light'
+                  ? 'bg-white shadow text-yellow-500'
+                  : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
                 title="Giao diện Sáng"
               >
                 <Sun size={18} />
               </button>
               <button
                 onClick={() => onThemeChange('dark')}
-                className={`p-2 rounded-lg transition ${
-                  theme === 'dark' 
-                    ? 'bg-gray-600 shadow text-blue-400' 
-                    : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+                className={`p-2 rounded-lg transition ${theme === 'dark'
+                  ? 'bg-gray-600 shadow text-blue-400'
+                  : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
                 title="Giao diện Tối"
               >
                 <Moon size={18} />
               </button>
               <button
                 onClick={() => onThemeChange('system')}
-                className={`p-2 rounded-lg transition ${
-                  theme === 'system' 
-                    ? 'bg-white dark:bg-gray-600 shadow text-purple-500' 
-                    : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+                className={`p-2 rounded-lg transition ${theme === 'system'
+                  ? 'bg-white dark:bg-gray-600 shadow text-purple-500'
+                  : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
                 title="Theo thiết bị"
               >
                 <Monitor size={18} />
@@ -93,8 +90,8 @@ export default function Header({ user, onLogin, onLogout, theme, onThemeChange }
         {!user && (
           <div className="mt-3 px-4 py-2 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
             <p className="text-sm text-yellow-800 dark:text-yellow-200">
-              ⚠️ <strong>Chế độ khách:</strong> Bạn có thể sử dụng tính năng chia tiền nhưng không thể lưu hóa đơn. 
-              <button 
+              ⚠️ <strong>Chế độ khách:</strong> Bạn có thể sử dụng tính năng chia tiền nhưng không thể lưu hóa đơn.
+              <button
                 onClick={onLogin}
                 className="ml-2 underline hover:text-yellow-900 dark:hover:text-yellow-100 font-medium"
               >
