@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { setLogoutCallback } from '../api/apiInterceptor';
 
 const AuthContext = createContext(null);
 
@@ -14,6 +15,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [people, setPeople] = useState(['Người 1', 'Người 2', 'Người 3', 'Người 4']);
   const [loading, setLoading] = useState(true);
+  const [tokenExpiredError, setTokenExpiredError] = useState(false);
 
   // Load user from localStorage on mount
   useEffect(() => {
@@ -43,6 +45,17 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
+  // Set logout callback cho API interceptor khi user hoặc logout function thay đổi
+  useEffect(() => {
+    setLogoutCallback(handleTokenExpiration);
+  }, []);
+
+  const handleTokenExpiration = () => {
+    console.warn('Token has expired, logging out user...');
+    setTokenExpiredError(true);
+    logout();
+  };
+
   const loadPeopleFromAPI = async (token) => {
     try {
       const response = await fetch(`${process.env.REACT_APP_API_URL}/profile`, {
@@ -65,6 +78,7 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', token);
+    setTokenExpiredError(false);
     
     // Load people từ API sau khi login
     loadPeopleFromAPI(token);
@@ -80,6 +94,10 @@ export const AuthProvider = ({ children }) => {
 
   const getToken = () => {
     return localStorage.getItem('token');
+  };
+
+  const clearTokenExpiredError = () => {
+    setTokenExpiredError(false);
   };
 
   const updatePeople = async (newPeople) => {
@@ -115,7 +133,9 @@ export const AuthProvider = ({ children }) => {
     getToken,
     updatePeople,
     loading,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
+    tokenExpiredError,
+    clearTokenExpiredError
   };
 
   return (
