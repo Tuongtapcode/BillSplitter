@@ -5,6 +5,8 @@ import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import AuthForm from './components/AuthForm';
 import StatsDashboard from './components/StatsDashboard';
+import TokenExpiredNotification from './components/TokenExpiredNotification';
+import { fetchWithTokenCheck } from './api/apiInterceptor';
 
 // === CẤU HÌNH API BACKEND ===
 const API_BASE_URL = process.env.REACT_APP_API_URL;
@@ -13,7 +15,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL;
 const api = {
   // Gemini - Đọc hóa đơn (không cần auth)
   async extractBill(imageBase64, mimeType) {
-    const response = await fetch(`${API_BASE_URL}/gemini/extract`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/gemini/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageBase64, mimeType })
@@ -29,7 +31,7 @@ const api = {
 
   // Bills CRUD (cần auth)
   async createBill(billData, token) {
-    const response = await fetch(`${API_BASE_URL}/bills`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -47,7 +49,7 @@ const api = {
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
 
-    const response = await fetch(`${API_BASE_URL}/bills?${params}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!response.ok) throw new Error('Failed to fetch bills');
@@ -59,7 +61,7 @@ const api = {
     if (year) params.append('year', year);
     if (month) params.append('month', month);
 
-    const response = await fetch(`${API_BASE_URL}/bills/stats?${params}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills/stats?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!response.ok) throw new Error('Failed to fetch stats');
@@ -67,7 +69,7 @@ const api = {
   },
 
   async updateBill(billId, billData, token) {
-    const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills/${billId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -81,7 +83,7 @@ const api = {
   },
 
   async deleteBill(billId, token) {
-    const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills/${billId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -92,7 +94,7 @@ const api = {
 
   // THÊM MỚI: Upload ảnh hóa đơn đã xuất
   async uploadExportedImage(imageBase64, billId, token) {
-    const response = await fetch(`${API_BASE_URL}/bills/upload-exported-image`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills/upload-exported-image`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -923,6 +925,7 @@ export default function BillSplitter() {
 
   return (
     <div className={`min-h-screen flex flex-col ${bgColor} transition-colors duration-300`}>
+      <TokenExpiredNotification />
       <Header user={user} onLogin={() => setShowAuthForm(true)} onLogout={logout} theme={theme} onThemeChange={saveThemeSetting} />
       {showAuthForm && <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full"><AuthForm onClose={() => setShowAuthForm(false)} /></div></div>}
 

@@ -1,11 +1,12 @@
 // api/billService.js - Tách logic API ra file riêng để dễ quản lý
+import { fetchWithTokenCheck } from './apiInterceptor';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 class BillService {
   // Gemini - Đọc hóa đơn (không cần auth)
   async extractBill(imageBase64, mimeType) {
-    const response = await fetch(`${API_BASE_URL}/gemini/extract`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/gemini/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageBase64, mimeType })
@@ -21,7 +22,7 @@ class BillService {
 
   // Bills CRUD (cần auth)
   async createBill(billData, token) {
-    const response = await fetch(`${API_BASE_URL}/bills`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -44,7 +45,7 @@ class BillService {
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
     
-    const response = await fetch(`${API_BASE_URL}/bills?${params}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
@@ -60,7 +61,7 @@ class BillService {
     if (year) params.append('year', year);
     if (month) params.append('month', month);
     
-    const response = await fetch(`${API_BASE_URL}/bills/stats?${params}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills/stats?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
@@ -72,7 +73,7 @@ class BillService {
   }
 
   async updateBill(billId, billData, token) {
-    const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills/${billId}`, {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json',
@@ -89,7 +90,7 @@ class BillService {
   }
 
   async deleteBill(billId, token) {
-    const response = await fetch(`${API_BASE_URL}/bills/${billId}`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/bills/${billId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -103,7 +104,7 @@ class BillService {
 
   // Auth endpoints
   async login(email, password) {
-    const response = await fetch(`${API_BASE_URL}/login`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -117,7 +118,7 @@ class BillService {
   }
 
   async register(username, email, password) {
-    const response = await fetch(`${API_BASE_URL}/register`, {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, password })
