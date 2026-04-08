@@ -6,7 +6,11 @@ const itemSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     quantity: { type: Number, default: 1 },
     // ✅ SỬA: Cho phép nhiều người cùng chia 1 món
-    assignedTo: [{ type: Number }] // Array of person indices
+    assignedTo: [{ type: Number }] // Array of person indices,
+    // ✅ THÊM: Lưu số lượng tùy chỉnh cho từng người
+    ,customQuantities: { type: Map, of: Number, default: {} },
+    // ✅ THÊM: Trạng thái chia số lượng tùy chỉnh
+    useCustom: { type: Boolean, default: false }
 }, { _id: false });
 
 // Schema cho thông tin ảnh

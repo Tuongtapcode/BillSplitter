@@ -19,7 +19,8 @@ const corsOptions = {
   origin: [
     'https://bill-splitter-pi-rose.vercel.app',
     'http://localhost:3000',
-
+    'http://localhost:3001',
+    'http://localhost:3002',
   ],
   credentials: true,
   optionsSuccessStatus: 200 // Một số trình duyệt cũ/proxy cần cái này

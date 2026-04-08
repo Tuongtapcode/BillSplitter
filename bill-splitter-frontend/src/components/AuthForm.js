@@ -104,6 +104,12 @@ export default function AuthForm({ onClose }) {
       }
     } catch (err) {
       console.error('Auth error:', err);
+      console.error('API_BASE_URL:', API_BASE_URL);
+      console.error('Error details:', {
+        message: err.message,
+        stack: err.stack,
+        name: err.name
+      });
       setError(err.message || 'Có lỗi xảy ra. Vui lòng thử lại!');
     } finally {
       setIsLoading(false);
