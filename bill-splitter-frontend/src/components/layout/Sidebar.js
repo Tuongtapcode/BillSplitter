@@ -1,10 +1,11 @@
 import React from 'react';
-import { Home, Receipt, TrendingUp, Users, BarChart3, Settings, LogOut, Menu, X } from 'lucide-react';
+import { Home, Receipt, TrendingUp, Users, BarChart3, Settings, LogOut, Menu, X, Wallet } from 'lucide-react';
 
 export default function Sidebar({ currentTab, onTabChange, isOpen, onToggle, user, onLogout }) {
   const menuItems = [
     { id: 'dashboard', label: 'Tổng quan', icon: Home, color: 'text-blue-600 dark:text-blue-400' },
     { id: 'split', label: 'Chia hóa đơn', icon: Receipt, color: 'text-green-600 dark:text-green-400' },
+    { id: 'debts', label: 'Sổ nợ thông minh', icon: Wallet, color: 'text-indigo-600 dark:text-indigo-400' },
     { id: 'expenses', label: 'Sổ chi tiêu', icon: TrendingUp, color: 'text-orange-600 dark:text-orange-400' },
     { id: 'groups', label: 'Nhóm/Bạn bè', icon: Users, color: 'text-purple-600 dark:text-purple-400' },
     { id: 'reports', label: 'Báo cáo', icon: BarChart3, color: 'text-red-600 dark:text-red-400' },

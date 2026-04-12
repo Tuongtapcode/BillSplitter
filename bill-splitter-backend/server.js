@@ -10,6 +10,7 @@ const connectDB = require('./src/config/db');
 const { router: authRouter } = require('./src/routes/auth'); // Router Auth
 const billsRouter = require('./src/routes/bills'); // Router Bills
 const geminiRouter = require('./src/routes/gemini'); // Router Gemini
+const debtsRouter = require('./src/routes/debts'); // Router Debts
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -54,6 +55,7 @@ const corsOptions = {
     // Setup Routes
     app.use('/api', authRouter); // Routes: /api/login, /api/register
     app.use('/api/bills', billsRouter); // Routes: /api/bills, /api/bills/:billId, /api/bills/stats
+    app.use('/api/debts', debtsRouter); // Routes: /api/debts, etc
     app.use('/api/gemini', geminiRouter); // Route: /api/gemini/extract
 
     // Start Server

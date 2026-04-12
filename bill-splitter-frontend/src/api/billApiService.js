@@ -102,6 +102,60 @@ class BillService {
     return response.json();
   }
 
+  // ========== DEBTS ENDPOINTS ==========
+  
+  // Get list of debts for a user
+  async getDebts(userId, token, filters = {}) {
+    const { status, type } = filters;
+    const params = new URLSearchParams();
+    
+    if (status) params.append('status', status);
+    if (type) params.append('type', type);
+    
+    const url = `${API_BASE_URL}/debts/user/${userId}${params.toString() ? '?' + params.toString() : ''}`;
+    
+    const response = await fetchWithTokenCheck(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch debts');
+    }
+    return response.json();
+  }
+
+  // Get debt summary (total owed, received, counts)
+  async getDebtSummary(userId, token) {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/debts/summary/${userId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch debt summary');
+    }
+    return response.json();
+  }
+
+  // Update debt status (PENDING → SETTLED, DISPUTED, etc)
+  async updateDebtStatus(debtId, status, token) {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/debts/${debtId}`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ status })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update debt status');
+    }
+    return response.json();
+  }
+
   // Auth endpoints
   async login(email, password) {
     const response = await fetchWithTokenCheck(`${API_BASE_URL}/login`, {
@@ -127,6 +181,20 @@ class BillService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Registration failed');
+    }
+    return response.json();
+  }
+
+  // ✅ NEW: Search users by username (for adding friends to bills)
+  async searchUsers(query) {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/search?q=${encodeURIComponent(query)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Search failed');
     }
     return response.json();
   }

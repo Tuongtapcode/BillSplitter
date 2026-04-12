@@ -69,13 +69,21 @@ const authenticateToken = (req, res, next) => {
 // POST /register - Đăng ký
 router.post('/register', async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, password, fullName } = req.body;
         if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
 
         // User Model có middleware băm mật khẩu (pre('save'))
-        const user = new User({ username, password });
+        const user = new User({ 
+            username, 
+            password,
+            fullName: fullName || username // ✅ Default to username if not provided
+        });
         await user.save();
-        res.status(201).json({ message: 'User registered successfully', username: user.username });
+        res.status(201).json({ 
+            message: 'User registered successfully', 
+            username: user.username,
+            fullName: user.fullName
+        });
 
     } catch (error) {
         if (error.code === 11000) return res.status(409).json({ error: 'Username already exists' });
@@ -100,7 +108,12 @@ router.post('/login', async (req, res) => {
             { expiresIn: '7d' }
         );
 
-        res.json({ token, userId: user._id.toString(), username: user.username });
+        res.json({ 
+            token, 
+            userId: user._id.toString(), 
+            username: user.username,
+            fullName: user.fullName || user.username // ✅ Return fullName
+        });
 
     } catch (error) {
         console.error('Login error:', error);
@@ -113,7 +126,14 @@ router.get('/profile', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
         if (!user) return res.status(404).json({ error: 'User not found' });
-        res.json({ user: { id: user._id, username: user.username, people: user.people } });
+        res.json({ 
+            user: { 
+                id: user._id, 
+                username: user.username, 
+                fullName: user.fullName, // ✅ Include fullName
+                people: user.people 
+            } 
+        });
     } catch (error) {
         console.error('Profile error:', error);
         res.status(500).json({ error: error.message });
@@ -158,5 +178,38 @@ router.get('/google/callback',
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}?token=${token}&userId=${req.user._id}&username=${req.user.username}`);
   }
 );
+
+// ✅ NEW: Search users by username or fullName (for adding friends to bills)
+router.get('/search', async (req, res) => {
+  try {
+    const query = req.query.q;
+    
+    if (!query || query.trim().length === 0) {
+      return res.status(400).json({ error: 'Query parameter "q" is required' });
+    }
+
+    // Search users by username OR fullName (case-insensitive, partial match)
+    const searchRegex = { $regex: query, $options: 'i' };
+    const users = await User.find({
+      $or: [
+        { username: searchRegex },
+        { fullName: searchRegex },
+        { email: searchRegex }
+      ]
+    })
+    .select('_id username fullName email')
+    .limit(10);
+
+    console.log(`🔍 Search query: "${query}" - Found ${users.length} users`);
+
+    res.json({
+      success: true,
+      results: users
+    });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
 
 module.exports = { router, authenticateToken };

@@ -9,6 +9,7 @@ export default function AuthForm({ onClose }) {
   const [isRegister, setIsRegister] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
+    fullName: '', // ✅ NEW: Full name field
     password: '',
     confirmPassword: ''
   });
@@ -55,6 +56,7 @@ export default function AuthForm({ onClose }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             username: formData.username,
+            fullName: formData.fullName, // ✅ Send fullName
             password: formData.password
           })
         });
@@ -71,6 +73,7 @@ export default function AuthForm({ onClose }) {
         setIsRegister(false);
         setFormData({
           username: formData.username,
+          fullName: '',
           password: '',
           confirmPassword: ''
         });
@@ -96,7 +99,8 @@ export default function AuthForm({ onClose }) {
         // Save to AuthContext
         login({
           userId: data.userId,
-          username: data.username
+          username: data.username,
+          fullName: data.fullName || data.username // ✅ Include fullName
         }, data.token);
 
         alert('✅ Đăng nhập thành công!');
@@ -121,6 +125,7 @@ export default function AuthForm({ onClose }) {
     setError('');
     setFormData({
       username: '',
+      fullName: '',
       password: '',
       confirmPassword: ''
     });
@@ -175,6 +180,23 @@ export default function AuthForm({ onClose }) {
             minLength={3}
           />
         </div>
+
+        {/* Full Name (Register only) */}
+        {isRegister && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Tên đầy đủ
+            </label>
+            <input
+              type="text"
+              name="fullName"
+              value={formData.fullName}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition"
+              placeholder="Nhập tên của bạn"
+            />
+          </div>
+        )}
 
         {/* Password */}
         <div>

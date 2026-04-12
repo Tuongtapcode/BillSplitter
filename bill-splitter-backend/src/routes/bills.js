@@ -3,6 +3,7 @@ const express = require('express');
 const Bill = require('../models/Bill');
 const { authenticateToken } = require('./auth'); // Import middleware
 const cloudinary = require('../config/cloudinary'); // THÊM MỚI
+const { createDebtsFromBill } = require('../services/debtService'); // THÊM MỚI
 
 const router = express.Router();
 
@@ -99,6 +100,17 @@ router.post('/', authenticateToken, async (req, res) => {
         });
 
         await bill.save();
+
+        // THÊM MỚI: Auto-create debts từ bill
+        try {
+            await createDebtsFromBill(bill);
+            console.log('✅ Debts created successfully for bill:', bill._id);
+        } catch (debtError) {
+            console.error('⚠️ Warning: Failed to create debts for bill:', debtError.message);
+            // Không throw error, vì bill đã được tạo thành công
+            // Chỉ log warning để user biết
+        }
+
         res.status(201).json({ message: 'Bill created successfully', bill });
     } catch (error) {
         console.error('Error creating bill:', error);

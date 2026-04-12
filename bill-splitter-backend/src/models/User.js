@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
+    fullName: { type: String, default: '' }, // ✅ NEW: Full name for better identification
     password: { type: String, required: function() { return !this.googleId; } }, // Password required only if not OAuth
     googleId: { type: String, unique: true, sparse: true },
     email: { type: String, unique: true, sparse: true },

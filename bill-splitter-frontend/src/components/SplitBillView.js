@@ -67,6 +67,19 @@ const api = {
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return await response.json();
+  },
+
+  // ✅ NEW: Search users by username or fullName
+  async searchUsers(query) {
+    const response = await fetchWithTokenCheck(`${API_BASE_URL}/search?q=${encodeURIComponent(query)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Search failed');
+    }
+    return response.json();
   }
 };
 
@@ -85,6 +98,12 @@ export default function SplitBillView({ history = [], onHistoryUpdate }) {
   const [currentImage, setCurrentImage] = useState(null);
   const [exportedImage, setExportedImage] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // ✅ NEW: Search users
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   const resultRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -360,6 +379,7 @@ export default function SplitBillView({ history = [], onHistoryUpdate }) {
       const billData = {
         name,
         people: [...people],
+        peopleInfo: buildPeopleInfo(), // ✅ Send metadata for smart debt logic
         items: validItems.map(item => ({
           name: item.name.trim(),
           price: parseFloat(item.price) || 0,
@@ -524,6 +544,34 @@ export default function SplitBillView({ history = [], onHistoryUpdate }) {
     }
   };
 
+  // ✅ NEW: Add self (bill creator) to people list
+  const addSelfToPeople = () => {
+    if (!user || !user.username) {
+      alert('⚠️ Vui lòng đăng nhập để thêm bản thân');
+      return;
+    }
+    
+    // Check if self already in people list
+    if (people.includes(user.username)) {
+      alert('✓ Bạn đã có trong danh sách chia tiền rồi!');
+      return;
+    }
+    
+    // Add self to people
+    updatePeople([...people, user.username]);
+    setShowAddPerson(false);
+    setNewPersonName('');
+  };
+
+  // ✅ NEW: Build peopleInfo with metadata (for smart debt logic)
+  const buildPeopleInfo = () => {
+    return people.map(person => ({
+      name: person,
+      isCurrentUser: person === user?.username,
+      // Backend sẽ query để lấy userId nếu person là registered user khác
+    }));
+  };
+
   const removePerson = (index) => {
     if (people.length > 1) {
       const newPeople = people.filter((_, i) => i !== index);
@@ -537,6 +585,49 @@ export default function SplitBillView({ history = [], onHistoryUpdate }) {
             .map(([key, value]) => [parseInt(key) > index ? parseInt(key) - 1 : parseInt(key), value])
         )
       })));
+    }
+  };
+
+  // ✅ NEW: Search users from database
+  const handleSearchUsers = async (query) => {
+    setSearchQuery(query);
+    
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      const result = await api.searchUsers(query);
+      
+      if (result.success && result.results) {
+        // Filter out current user and already added people
+        const filtered = result.results.filter(searchUser => 
+          searchUser.username !== user?.username && !people.includes(searchUser.username)
+        );
+        setSearchResults(filtered);
+        setShowSearchResults(true);
+      } else {
+        setSearchResults([]);
+        setShowSearchResults(false);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // ✅ NEW: Add searched user to people list
+  const selectSearchedUser = (selectedUser) => {
+    if (!people.includes(selectedUser.username)) {
+      updatePeople([...people, selectedUser.username]);
+      setSearchQuery('');
+      setSearchResults([]);
+      setShowSearchResults(false);
     }
   };
 
@@ -780,9 +871,68 @@ export default function SplitBillView({ history = [], onHistoryUpdate }) {
           ))}
         </div>
         {!showAddPerson ? (
-          <button onClick={() => setShowAddPerson(true)} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition">
-            <Plus size={20} />Thêm người
-          </button>
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={() => setShowAddPerson(true)} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition">
+                <Plus size={20} />Thêm người
+              </button>
+              {isAuthenticated && (
+                <button onClick={addSelfToPeople} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">
+                  <Plus size={20} />Thêm bản thân
+                </button>
+              )}
+              {isAuthenticated && (
+                <button onClick={() => setShowSearchResults(!showSearchResults)} className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition">
+                  <Plus size={20} />Tìm kiếm bạn
+                </button>
+              )}
+            </div>
+            
+            {/* ✅ NEW: Search dropdown */}
+            {showSearchResults && (
+              <div className="border-2 border-purple-300 dark:border-purple-700 rounded-lg p-3 bg-purple-50 dark:bg-purple-900/20">
+                <div className="flex gap-2 mb-2">
+                  <input 
+                    type="text" 
+                    value={searchQuery} 
+                    onChange={(e) => handleSearchUsers(e.target.value)} 
+                    placeholder="Tìm theo tên đầy đủ hoặc username..." 
+                    className={`flex-1 ${inputStyle}`}
+                    autoFocus 
+                  />
+                  {isSearching && <RefreshCw className="animate-spin h-5 w-5 text-purple-500" />}
+                </div>
+                
+                {searchResults.length > 0 ? (
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {searchResults.map((searchUser) => (
+                      <div 
+                        key={searchUser._id}
+                        onClick={() => selectSearchedUser(searchUser)}
+                        className="p-2 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900 transition flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-medium text-purple-700 dark:text-purple-300">
+                            {searchUser.fullName ? `${searchUser.fullName} (${searchUser.username})` : searchUser.username}
+                          </div>
+                          {searchUser.email && <div className="text-xs text-gray-500 dark:text-gray-400">{searchUser.email}</div>}
+                        </div>
+                        <Plus size={16} className="text-purple-500" />
+                      </div>
+                    ))}
+                  </div>
+                ) : searchQuery.trim() ? (
+                  <div className="text-center text-gray-500 dark:text-gray-400 py-2">
+                    Không tìm thấy người dùng
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-500 dark:text-gray-400 py-2">
+                    Nhập tên để tìm kiếm...
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="flex gap-2">
             <input type="text" value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addPerson()} placeholder="Tên người..." className={`flex-1 ${inputStyle}`} autoFocus />

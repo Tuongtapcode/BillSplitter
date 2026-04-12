@@ -8,6 +8,7 @@ import SplitBillView from './components/SplitBillView';
 import ExpensesManagement from './components/dashboard/ExpensesManagement';
 import GroupsView from './components/GroupsView';
 import ReportsView from './components/ReportsView';
+import SmartDebtView from './components/SmartDebtView';
 import { fetchWithTokenCheck } from './api/apiInterceptor';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL;
@@ -148,6 +149,11 @@ export default function BillSplitter() {
             <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-6">💰 Sổ chi tiêu</h1>
             <ExpensesManagement bills={history} />
           </div>
+        );
+
+      case 'debts':
+        return (
+          <SmartDebtView userId={user?.userId} token={getToken()} />
         );
 
       case 'groups':
